@@ -32,6 +32,7 @@ class Model(object):
                                              tf.negative(tf.sin(rotation)),
                                              tf.cos(rotation),
                                              tf.zeros(1, ),
+                                             tf.zeros(1, ),
                                              tf.zeros(1, )]), (8,))
             m['warped_previous_belief'] = tf.contrib.image.transform(belief, transform)
             return m['warped_previous_belief']
