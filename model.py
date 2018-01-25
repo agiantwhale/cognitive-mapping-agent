@@ -3,9 +3,8 @@ from tensorflow.contrib import slim
 
 
 class Model(object):
-    @staticmethod
-    def _build_mapper(visual_input, egomotion, m={}, estimator=None):
-        ESTIMATE_SIZE = (16, 16)
+    def _build_mapper(self, visual_input, egomotion, m={}, estimator=None):
+        estimate_shape = self._estimate_size
 
         def _estimate(image):
             with slim.arg_scope([slim.conv2d, slim.fully_connected],
@@ -25,15 +24,14 @@ class Model(object):
 
         def _apply_egomotion(belief, ego):
             translation, rotation = tf.unstack(ego)
-            # Transform relative to agent -- in other direction
-            transform = tf.reshape(tf.stack([tf.cos(rotation),
-                                             tf.sin(rotation),
-                                             tf.negative(translation),
-                                             tf.negative(tf.sin(rotation)),
-                                             tf.cos(rotation),
-                                             tf.zeros(1, ),
-                                             tf.zeros(1, ),
-                                             tf.zeros(1, )]), (8,))
+
+            cos_rot = tf.cos(rotation)
+            sin_rot = tf.sin(rotation)
+            zero = tf.zeros(1, )
+
+            transform = tf.reshape(tf.stack([cos_rot, sin_rot, tf.negative(translation),
+                                             tf.negative(sin_rot), cos_rot, zero,
+                                             zero, zero]), (8,))
             m['warped_previous_belief'] = tf.contrib.image.transform(belief, transform)
             return m['warped_previous_belief']
 
@@ -50,11 +48,11 @@ class Model(object):
         class MapUnrollCell(tf.nn.rnn_cell.RNNCell):
             @property
             def state_size(self):
-                return tf.nn.rnn_cell.LSTMStateTuple(ESTIMATE_SIZE, ESTIMATE_SIZE)
+                return tf.nn.rnn_cell.LSTMStateTuple(estimate_shape, estimate_shape)
 
             @property
             def output_size(self):
-                return ESTIMATE_SIZE
+                return estimate_shape
 
             def __call__(self, inputs, state, scope=None):
                 image, ego = inputs
@@ -65,21 +63,20 @@ class Model(object):
                 return outputs, outputs
 
         m['current_belief'] = tf.nn.dynamic_rnn(MapUnrollCell(), (visual_input, egomotion),
-                                                initial_state=tf.zeros(ESTIMATE_SIZE))
+                                                initial_state=tf.zeros(estimate_shape))
         return m['current_belief']
 
     @staticmethod
     def _build_planner():
         pass
 
-    def __init__(self, image_size=(320, 320), map_size=(16, 16), estimator=None):
+    def __init__(self, image_size=(320, 320), estimate_size=(16, 16), estimator=None):
         self._image_size = image_size
-        self._map_size = map_size
+        self._estimate_size = estimate_size
 
         tensors = {}
 
-        current_input = tf.placeholder(tf.int32, self._image_size)
-        previous_estimate = tf.placeholder(tf.float32, self._map_size)
-        egomotion = tf.placeholder(tf.float32, (2,))
+        current_input = tf.placeholder(tf.float32, [None, None] + list(self._image_size) + [3])
+        egomotion = tf.placeholder(tf.float32, (None, None, 2))
 
-        self._build_mapper(current_input, previous_estimate, egomotion, tensors, estimator=estimator)
+        self._build_mapper(current_input, egomotion, tensors, estimator=estimator)
