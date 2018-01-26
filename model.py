@@ -32,14 +32,18 @@ class Model(object):
             m['temporal_belief'] = [_constrain_confidence(belief) for belief in beliefs]
             return m['temporal_belief']
 
-        def _apply_egomotion(belief, ego):
+        def _apply_egomotion(belief, scale_index, ego):
             translation, rotation = tf.unstack(ego, axis=1)
 
             cos_rot = tf.cos(rotation)
             sin_rot = tf.sin(rotation)
             zero = tf.zeros_like(rotation)
+            scale = tf.get_variable("scale_value_{}".format(scale_index),
+                                    shape=(self._batch_size,),
+                                    dtype=tf.float32,
+                                    initializer=tf.zeros_initializer())
 
-            transform = tf.stack([cos_rot, sin_rot, tf.negative(translation),
+            transform = tf.stack([cos_rot, sin_rot, tf.multiply(tf.negative(translation), scale),
                                   tf.negative(sin_rot), cos_rot, zero,
                                   zero, zero], axis=1)
             m['warped_previous_belief'] = tf.contrib.image.transform(belief, transform)
@@ -69,7 +73,7 @@ class Model(object):
                 image, ego = inputs
 
                 current_scaled_estimates = _estimate(image) if estimator is None else estimator(image)
-                previous_scaled_estimates = [_apply_egomotion(s, ego) for s in state]
+                previous_scaled_estimates = [_apply_egomotion(belief, index, ego) for index, belief in enumerate(state)]
                 outputs = [_warp(c, p) for c, p in zip(current_scaled_estimates, previous_scaled_estimates)]
 
                 return outputs, outputs
