@@ -8,6 +8,10 @@ class Model(object):
         estimate_shape = self._estimate_shape
 
         def _estimate(image):
+            def _constrain_confidence(belief):
+                estimate, confidence = tf.unstack(belief, axis=3)
+                return tf.stack([estimate, tf.nn.sigmoid(confidence)], axis=3)
+
             with slim.arg_scope([slim.conv2d, slim.fully_connected],
                                 activation_fn=tf.nn.relu,
                                 weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
@@ -23,8 +27,9 @@ class Model(object):
                     net = slim.conv2d_transpose(net, 64, [24, 24], padding='VALID')
                     net = slim.conv2d_transpose(net, 32, [24, 24], padding='VALID')
                     net = slim.conv2d_transpose(net, 2, [14, 14], padding='VALID')
-                    m['temporal_belief'] = [net] + [slim.conv2d_transpose(net, 2, [6, 6])
-                                                    for _ in range(estimate_scale - 1)]
+                    beliefs = [net] + [slim.conv2d_transpose(net, 2, [6, 6])
+                                       for _ in range(estimate_scale - 1)]
+            m['temporal_belief'] = [_constrain_confidence(belief) for belief in beliefs]
             return m['temporal_belief']
 
         def _apply_egomotion(belief, ego):
@@ -43,8 +48,6 @@ class Model(object):
         def _warp(temp_belief, prev_belief):
             temp_estimate, temp_confidence = tf.unstack(temp_belief, axis=3)
             prev_estimate, prev_confidence = tf.unstack(prev_belief, axis=3)
-
-            temp_confidence, prev_confidence = tf.nn.sigmoid(temp_confidence), tf.nn.sigmoid(prev_confidence)
 
             current_confidence = temp_confidence + prev_confidence
             current_estimate = tf.divide(tf.multiply(temp_estimate, temp_confidence) +
