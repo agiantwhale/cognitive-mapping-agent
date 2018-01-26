@@ -4,7 +4,8 @@ from tensorflow.contrib import slim
 
 class Model(object):
     def _build_mapper(self, visual_input, egomotion, m={}, estimator=None):
-        estimate_shape = list(self._estimate_size)
+        estimate_scale = self._estimate_scale
+        estimate_shape = self._estimate_shape
 
         def _estimate(image):
             with slim.arg_scope([slim.conv2d, slim.fully_connected],
@@ -19,10 +20,11 @@ class Model(object):
                     net = slim.conv2d(net, 256, [5, 5])
                     net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
                     net = slim.fully_connected(net, 200)
-                    net = slim.conv2d_transpose(net, 64, [4, 4], padding='VALID')
-                    net = slim.conv2d_transpose(net, 32, [4, 4], padding='VALID')
-                    net = slim.conv2d_transpose(net, 2, [6, 6], padding='VALID')
-            m['temporal_belief'] = net
+                    net = slim.conv2d_transpose(net, 64, [24, 24], padding='VALID')
+                    net = slim.conv2d_transpose(net, 32, [24, 24], padding='VALID')
+                    net = slim.conv2d_transpose(net, 2, [14, 14], padding='VALID')
+                    m['temporal_belief'] = [net] + [slim.conv2d_transpose(net, 2, [6, 6])
+                                                    for _ in range(estimate_scale - 1)]
             return m['temporal_belief']
 
         def _apply_egomotion(belief, ego):
@@ -54,17 +56,18 @@ class Model(object):
         class BiLinearSamplingCell(tf.nn.rnn_cell.RNNCell):
             @property
             def state_size(self):
-                return tf.TensorShape(estimate_shape)
+                return [tf.TensorShape(estimate_shape) for _ in range(estimate_scale)]
 
             @property
             def output_size(self):
-                return tf.TensorShape(estimate_shape)
+                return [tf.TensorShape(estimate_shape) for _ in range(estimate_scale)]
 
             def __call__(self, inputs, state, scope=None):
                 image, ego = inputs
 
-                outputs = _warp(_estimate(image) if estimator is None else estimator(image),
-                                _apply_egomotion(state, ego))
+                current_scaled_estimates = _estimate(image) if estimator is None else estimator(image)
+                previous_scaled_estimates = [_apply_egomotion(s, ego) for s in state]
+                outputs = [_warp(c, p) for c, p in zip(current_scaled_estimates, previous_scaled_estimates)]
 
                 return outputs, outputs
 
@@ -77,10 +80,11 @@ class Model(object):
     def _build_planner():
         pass
 
-    def __init__(self, batch_size=1, image_size=(320, 320), estimate_size=(16, 16), estimator=None):
+    def __init__(self, batch_size=1, image_size=(320, 320), estimate_size=64, estimate_scale=2, estimator=None):
         self._batch_size = batch_size
         self._image_size = image_size
-        self._estimate_size = list(estimate_size) + [2]
+        self._estimate_shape = (estimate_size, estimate_size, 2)
+        self._estimate_scale = estimate_scale
 
         tensors = {}
 
