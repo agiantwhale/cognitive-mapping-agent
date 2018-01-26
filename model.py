@@ -38,10 +38,11 @@ class Model(object):
             cos_rot = tf.cos(rotation)
             sin_rot = tf.sin(rotation)
             zero = tf.zeros_like(rotation)
-            scale = tf.get_variable("scale_value_{}".format(scale_index),
+            scale = tf.get_variable('scale_value_{}'.format(scale_index),
                                     shape=(self._batch_size,),
                                     dtype=tf.float32,
                                     initializer=tf.zeros_initializer())
+            m['scale_value_{}'.format(scale_index)] = scale
 
             transform = tf.stack([cos_rot, sin_rot, tf.multiply(tf.negative(translation), scale),
                                   tf.negative(sin_rot), cos_rot, zero,
@@ -83,9 +84,29 @@ class Model(object):
                                                    initial_state=bilinear_cell.zero_state(self._batch_size, tf.float32))
         return m['current_belief']
 
-    @staticmethod
-    def _build_planner():
-        pass
+    def _build_planner(self, scaled_beliefs, rewards, m={}):
+        estimate_scale = self._estimate_scale
+        estimate_shape = self._estimate_shape
+
+        stacked_scaled_beliefs = tf.stack(scaled_beliefs, axis=1)
+
+        class ValueIterationCell(tf.nn.rnn_cell.RNNCell):
+            @property
+            def state_size(self):
+                return [tf.TensorShape(estimate_shape) for _ in range(estimate_scale)]
+
+            @property
+            def output_size(self):
+                return [tf.TensorShape(estimate_shape) for _ in range(estimate_scale)]
+
+            def __call__(self, inputs, state, scope=None):
+                estimate = inputs
+                return state, state
+
+        vin_cell = ValueIterationCell()
+        m['value_map'], _ = tf.nn.dynamic_rnn(vin_cell, stacked_scaled_beliefs,
+                                              initial_state=vin_cell.zero_state(self._batch_size, tf.float32))
+        return m['value_map']
 
     def __init__(self, batch_size=1, image_size=(320, 320), estimate_size=64, estimate_scale=2, estimator=None):
         self._batch_size = batch_size
