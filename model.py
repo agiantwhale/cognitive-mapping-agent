@@ -3,7 +3,8 @@ from tensorflow.contrib import slim
 
 
 class Model(object):
-    def _build_mapper(self, visual_input, egomotion, m={}, estimator=None):
+    def _build_mapper(self, visual_input, egomotion, reward, m={}, estimator=None):
+        batch_size = self._batch_size
         estimate_scale = self._estimate_scale
         estimate_shape = self._estimate_shape
 
@@ -32,56 +33,65 @@ class Model(object):
             m['temporal_belief'] = [_constrain_confidence(belief) for belief in beliefs]
             return m['temporal_belief']
 
-        def _apply_egomotion(belief, scale_index, ego):
+        def _apply_egomotion(tensor, scale_index, ego):
             translation, rotation = tf.unstack(ego, axis=1)
 
             cos_rot = tf.cos(rotation)
             sin_rot = tf.sin(rotation)
             zero = tf.zeros_like(rotation)
-            scale = tf.get_variable('scale_value_{}'.format(scale_index),
-                                    shape=(self._batch_size,),
-                                    dtype=tf.float32,
-                                    initializer=tf.zeros_initializer())
-            m['scale_value_{}'.format(scale_index)] = scale
+            scale = tf.constant(2 ** scale_index, dtype=tf.float32, shape=(batch_size,))
 
             transform = tf.stack([cos_rot, sin_rot, tf.multiply(tf.negative(translation), scale),
                                   tf.negative(sin_rot), cos_rot, zero,
                                   zero, zero], axis=1)
-            m['warped_previous_belief'] = tf.contrib.image.transform(belief, transform)
+            m['warped_previous_belief'] = tf.contrib.image.transform(tensor, transform)
             return m['warped_previous_belief']
 
+        def _delta_reward_map(reward):
+            h, w, c = estimate_shape
+            m_h, m_w = int((h - 1) / 2), int((w - 1) / 2)
+
+            return tf.scatter_nd(tf.constant([[i, m_h, m_w] for i in range(batch_size)]),
+                                 tf.squeeze(reward), tf.constant([batch_size, h, w]))
+
         def _warp(temp_belief, prev_belief):
-            temp_estimate, temp_confidence = tf.unstack(temp_belief, axis=3)
-            prev_estimate, prev_confidence = tf.unstack(prev_belief, axis=3)
+            temp_estimate, temp_confidence, temp_rewards = tf.unstack(temp_belief, axis=3)
+            prev_estimate, prev_confidence, prev_rewards = tf.unstack(prev_belief, axis=3)
 
             current_confidence = temp_confidence + prev_confidence
             current_estimate = tf.divide(tf.multiply(temp_estimate, temp_confidence) +
                                          tf.multiply(prev_estimate, prev_confidence),
                                          current_confidence)
-            current_belief = tf.stack([current_estimate, current_confidence], axis=3)
+            current_rewards = temp_rewards + prev_rewards
+            current_belief = tf.stack([current_estimate, current_confidence, current_rewards], axis=3)
             return current_belief
 
         class BiLinearSamplingCell(tf.nn.rnn_cell.RNNCell):
             @property
             def state_size(self):
-                return [tf.TensorShape(estimate_shape) for _ in range(estimate_scale)]
+                return [tf.TensorShape(estimate_shape)] * estimate_scale
 
             @property
             def output_size(self):
-                return [tf.TensorShape(estimate_shape) for _ in range(estimate_scale)]
+                return [tf.TensorShape(estimate_shape)] * estimate_scale
 
             def __call__(self, inputs, state, scope=None):
-                image, ego = inputs
+                image, ego, re = inputs
+
+                delta_reward_map = tf.expand_dims(_delta_reward_map(re), axis=3)
 
                 current_scaled_estimates = _estimate(image) if estimator is None else estimator(image)
-                previous_scaled_estimates = [_apply_egomotion(belief, index, ego) for index, belief in enumerate(state)]
+                current_scaled_estimates = [tf.concat([estimate, delta_reward_map], axis=3)
+                                            for estimate in current_scaled_estimates]
+                previous_scaled_estimates = [_apply_egomotion(belief, scale_index, ego)
+                                             for scale_index, belief in enumerate(state)]
                 outputs = [_warp(c, p) for c, p in zip(current_scaled_estimates, previous_scaled_estimates)]
 
                 return outputs, outputs
 
         bilinear_cell = BiLinearSamplingCell()
-        m['current_belief'], _ = tf.nn.dynamic_rnn(bilinear_cell, (visual_input, egomotion),
-                                                   initial_state=bilinear_cell.zero_state(self._batch_size, tf.float32))
+        m['current_belief'], _ = tf.nn.dynamic_rnn(bilinear_cell, (visual_input, egomotion, reward),
+                                                   initial_state=bilinear_cell.zero_state(batch_size, tf.float32))
         return m['current_belief']
 
     def _build_planner(self, scaled_beliefs, rewards, m={}):
@@ -93,14 +103,13 @@ class Model(object):
         class ValueIterationCell(tf.nn.rnn_cell.RNNCell):
             @property
             def state_size(self):
-                return [tf.TensorShape(estimate_shape) for _ in range(estimate_scale)]
+                return [tf.TensorShape(estimate_shape)] * estimate_scale
 
             @property
             def output_size(self):
-                return [tf.TensorShape(estimate_shape) for _ in range(estimate_scale)]
+                return [tf.TensorShape(estimate_shape)] * estimate_scale
 
             def __call__(self, inputs, state, scope=None):
-                estimate = inputs
                 return state, state
 
         vin_cell = ValueIterationCell()
@@ -111,15 +120,16 @@ class Model(object):
     def __init__(self, batch_size=1, image_size=(320, 320), estimate_size=64, estimate_scale=2, estimator=None):
         self._batch_size = batch_size
         self._image_size = image_size
-        self._estimate_shape = (estimate_size, estimate_size, 2)
+        self._estimate_shape = (estimate_size, estimate_size, 3)
         self._estimate_scale = estimate_scale
 
         tensors = {}
 
         current_input = tf.placeholder(tf.float32, [batch_size, None] + list(self._image_size) + [3])
         egomotion = tf.placeholder(tf.float32, (batch_size, None, 2))
+        reward = tf.placeholder(tf.float32, (batch_size, None, 1))
 
-        self._build_mapper(current_input, egomotion, tensors, estimator=estimator)
+        self._build_mapper(current_input, egomotion, reward, tensors, estimator=estimator)
 
 
 if __name__ == "__main__":
