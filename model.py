@@ -90,7 +90,8 @@ class Model(object):
                 return outputs, outputs
 
         bilinear_cell = BiLinearSamplingCell()
-        m['current_belief'], _ = tf.nn.dynamic_rnn(bilinear_cell, (visual_input, egomotion, reward),
+        m['current_belief'], _ = tf.nn.dynamic_rnn(bilinear_cell,
+                                                   (visual_input, egomotion, tf.expand_dims(reward, axis=2)),
                                                    initial_state=bilinear_cell.zero_state(batch_size, tf.float32))
         return m['current_belief']
 
@@ -127,7 +128,7 @@ class Model(object):
 
         current_input = tf.placeholder(tf.float32, [batch_size, None] + list(self._image_size) + [3])
         egomotion = tf.placeholder(tf.float32, (batch_size, None, 2))
-        reward = tf.placeholder(tf.float32, (batch_size, None, 1))
+        reward = tf.placeholder(tf.float32, (batch_size, None))
 
         self._build_mapper(current_input, egomotion, reward, tensors, estimator=estimator)
 
