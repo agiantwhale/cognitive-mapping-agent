@@ -95,11 +95,20 @@ class Model(object):
                                                    initial_state=bilinear_cell.zero_state(batch_size, tf.float32))
         return m['current_belief']
 
-    def _build_planner(self, scaled_beliefs, rewards, m={}):
+    def _build_planner(self, scaled_beliefs, m={}):
         estimate_scale = self._estimate_scale
         estimate_shape = self._estimate_shape
 
-        stacked_scaled_beliefs = tf.stack(scaled_beliefs, axis=1)
+        def _fuse_belief(belief):
+            with slim.arg_scope([slim.conv2d],
+                                activation_fn=tf.nn.relu,
+                                weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                weights_regularizer=slim.l2_regularizer(0.0005),
+                                stride=1, kernel_size=[3, 3], padding='SAME'):
+                with tf.variable_scope("fuser"):
+                    net = slim.repeat(belief, 3, slim.conv2d, 6)
+                    net = slim.conv2d(net, 1)
+                    return net
 
         class ValueIterationCell(tf.nn.rnn_cell.RNNCell):
             @property
