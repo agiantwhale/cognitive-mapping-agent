@@ -73,7 +73,7 @@ class Model(object):
 
             @property
             def output_size(self):
-                return [tf.TensorShape(estimate_shape)] * estimate_scale
+                return []
 
             def __call__(self, inputs, state, scope=None):
                 image, ego, re = inputs
@@ -90,48 +90,81 @@ class Model(object):
                 return outputs, outputs
 
         bilinear_cell = BiLinearSamplingCell()
-        m['current_belief'], _ = tf.nn.dynamic_rnn(bilinear_cell,
-                                                   (visual_input, egomotion, tf.expand_dims(reward, axis=2)),
-                                                   initial_state=bilinear_cell.zero_state(batch_size, tf.float32))
-        return m['current_belief']
+        intermediate_beliefs, final_belief = tf.nn.dynamic_rnn(bilinear_cell,
+                                                               (visual_input, egomotion,
+                                                                tf.expand_dims(reward, axis=2)),
+                                                               initial_state=bilinear_cell.zero_state(batch_size,
+                                                                                                      tf.float32))
+        m['estimate_maps'] = intermediate_beliefs
+        return final_belief
 
     def _build_planner(self, scaled_beliefs, m={}):
-        estimate_scale = self._estimate_scale
-        estimate_shape = self._estimate_shape
+        batch_size = self._batch_size
+        estimate_size = self._estimate_size
+        value_map_size = (estimate_size, estimate_size, 1)
+        num_actions = self._num_actions
+        num_iterations = self._num_iterations
 
         def _fuse_belief(belief):
             with slim.arg_scope([slim.conv2d],
                                 activation_fn=tf.nn.relu,
                                 weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
                                 weights_regularizer=slim.l2_regularizer(0.0005),
-                                stride=1, kernel_size=[3, 3], padding='SAME'):
-                with tf.variable_scope("fuser"):
-                    net = slim.repeat(belief, 3, slim.conv2d, 6)
-                    net = slim.conv2d(net, 1)
+                                stride=1, padding='SAME'):
+                with tf.variable_scope("fuser", reuse=tf.AUTO_REUSE):
+                    net = slim.repeat(belief, 3, slim.conv2d, 6, [1, 1])
+                    net = slim.conv2d(net, 1, [1, 1])
                     return net
 
-        class ValueIterationCell(tf.nn.rnn_cell.RNNCell):
+        class HierarchicalVINCell(tf.nn.rnn_cell.RNNCell):
             @property
             def state_size(self):
-                return [tf.TensorShape(estimate_shape)] * estimate_scale
+                return tf.TensorShape(value_map_size)
 
             @property
             def output_size(self):
-                return [tf.TensorShape(estimate_shape)] * estimate_scale
+                return []
 
             def __call__(self, inputs, state, scope=None):
-                return state, state
+                # Upscale previous value map
+                crop_size = int(estimate_size / 2)
+                state = state[:, crop_size:-crop_size, crop_size:-crop_size, :]
+                state = tf.image.resize_bilinear(state, tf.constant([estimate_size, estimate_size]),
+                                                 align_corners=True)
 
-        vin_cell = ValueIterationCell()
-        m['value_map'], _ = tf.nn.dynamic_rnn(vin_cell, stacked_scaled_beliefs,
-                                              initial_state=vin_cell.zero_state(self._batch_size, tf.float32))
-        return m['value_map']
+                with tf.variable_scope("VIN_prior", reuse=tf.AUTO_REUSE):
+                    rewards_map = _fuse_belief(tf.concat([inputs, state], axis=3))
+                    actions_map = slim.conv2d(rewards_map, num_actions, [3, 3])
+                    values_map = tf.reduce_max(actions_map, axis=3, keep_dims=True)
 
-    def __init__(self, batch_size=1, image_size=(320, 320), estimate_size=64, estimate_scale=2, estimator=None):
+                with tf.variable_scope("VIN", reuse=tf.AUTO_REUSE):
+                    for i in range(num_iterations - 1):
+                        rv = tf.concat([rewards_map, values_map], axis=3)
+                        actions_map = slim.conv2d(rv, num_actions, [3, 3])
+                        values_map = tf.reduce_max(actions_map, axis=3, keep_dims=True)
+
+                return values_map, values_map
+
+        vin_cell = HierarchicalVINCell()
+        intermediate_values_map, final_values_map = tf.nn.dynamic_rnn(vin_cell, tf.stack(scaled_beliefs, axis=1),
+                                                                      initial_state=vin_cell.zero_state(batch_size,
+                                                                                                        tf.float32))
+        m['values_maps'] = intermediate_values_map
+
+        values_features = slim.flatten(final_values_map)
+        actions_logit = tf.nn.softmax(slim.fully_connected(values_features, num_actions))
+
+        return actions_logit
+
+    def __init__(self, batch_size=1, image_size=(320, 320), estimate_size=64, estimate_scale=2, estimator=None,
+                 num_actions=4, num_iterations=3):
         self._batch_size = batch_size
         self._image_size = image_size
+        self._estimate_size = estimate_size
         self._estimate_shape = (estimate_size, estimate_size, 3)
         self._estimate_scale = estimate_scale
+        self._num_actions = num_actions
+        self._num_iterations = num_iterations
 
         tensors = {}
 
@@ -139,7 +172,27 @@ class Model(object):
         egomotion = tf.placeholder(tf.float32, (batch_size, None, 2))
         reward = tf.placeholder(tf.float32, (batch_size, None))
 
-        self._build_mapper(current_input, egomotion, reward, tensors, estimator=estimator)
+        scaled_beliefs = self._build_mapper(current_input, egomotion, reward, tensors, estimator=estimator)
+        actions = self._build_planner(scaled_beliefs)
+
+        self._visual_input = current_input
+        self._egomotion = egomotion
+        self._reward = reward
+        self._actions = actions
+
+    @property
+    def input_tensors(self):
+        return {
+            'visual_input': self._visual_input,
+            'egomotion': self._egomotion,
+            'reward': self._reward
+        }
+
+    @property
+    def output_tensors(self):
+        return {
+            'actions': self._actions,
+        }
 
 
 if __name__ == "__main__":
