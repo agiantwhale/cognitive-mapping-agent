@@ -205,4 +205,4 @@ class CMAP(object):
 
 
 if __name__ == "__main__":
-    Model(batch_size=32)
+    CMAP(batch_size=32)
