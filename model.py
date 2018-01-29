@@ -3,6 +3,17 @@ from tensorflow.contrib import slim
 
 
 class Model(object):
+    def _upscale_image(self, image, scale_index=1):
+        if scale_index == 0:
+            return image
+
+        estimate_size = self._estimate_size
+        crop_size = int(estimate_size / (2 ** scale_index))
+        image = image[:, crop_size:-crop_size, crop_size:-crop_size, :]
+        image = tf.image.resize_bilinear(image, tf.constant([estimate_size, estimate_size]),
+                                         align_corners=True)
+        return image
+
     def _build_mapper(self, visual_input, egomotion, reward, m={}, estimator=None):
         batch_size = self._batch_size
         estimate_scale = self._estimate_scale
@@ -28,8 +39,8 @@ class Model(object):
                     net = slim.conv2d_transpose(net, 64, [24, 24], padding='VALID')
                     net = slim.conv2d_transpose(net, 32, [24, 24], padding='VALID')
                     net = slim.conv2d_transpose(net, 2, [14, 14], padding='VALID')
-                    beliefs = [net] + [slim.conv2d_transpose(net, 2, [6, 6])
-                                       for _ in range(estimate_scale - 1)]
+                    beliefs = [self._upscale_image(slim.conv2d_transpose(net, 2, [6, 6]), i)
+                               for i in range(estimate_scale)]
             m['temporal_belief'] = [_constrain_confidence(belief) for belief in beliefs]
             return m['temporal_belief']
 
@@ -99,6 +110,7 @@ class Model(object):
         return final_belief
 
     def _build_planner(self, scaled_beliefs, m={}):
+        image_scaler = self._upscale_image
         batch_size = self._batch_size
         estimate_size = self._estimate_size
         value_map_size = (estimate_size, estimate_size, 1)
@@ -127,10 +139,7 @@ class Model(object):
 
             def __call__(self, inputs, state, scope=None):
                 # Upscale previous value map
-                crop_size = int(estimate_size / 2)
-                state = state[:, crop_size:-crop_size, crop_size:-crop_size, :]
-                state = tf.image.resize_bilinear(state, tf.constant([estimate_size, estimate_size]),
-                                                 align_corners=True)
+                state = image_scaler(state)
 
                 with tf.variable_scope("VIN_prior", reuse=tf.AUTO_REUSE):
                     rewards_map = _fuse_belief(tf.concat([inputs, state], axis=3))
