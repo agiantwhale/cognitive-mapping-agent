@@ -144,13 +144,13 @@ class Model(object):
                 with tf.variable_scope("VIN_prior", reuse=tf.AUTO_REUSE):
                     rewards_map = _fuse_belief(tf.concat([inputs, state], axis=3))
                     actions_map = slim.conv2d(rewards_map, num_actions, [3, 3])
-                    values_map = tf.reduce_max(actions_map, axis=3, keepdims=True)
+                    values_map = tf.reduce_max(actions_map, axis=3, keep_dims=True)
 
                 with tf.variable_scope("VIN", reuse=tf.AUTO_REUSE):
                     for i in xrange(num_iterations - 1):
                         rv = tf.concat([rewards_map, values_map], axis=3)
                         actions_map = slim.conv2d(rv, num_actions, [3, 3])
-                        values_map = tf.reduce_max(actions_map, axis=3, keepdims=True)
+                        values_map = tf.reduce_max(actions_map, axis=3, keep_dims=True)
 
                 return values_map, values_map
 
