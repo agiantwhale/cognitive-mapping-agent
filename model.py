@@ -2,7 +2,7 @@ import tensorflow as tf
 from tensorflow.contrib import slim
 
 
-class Model(object):
+class CMAP(object):
     def _upscale_image(self, image, scale_index=1):
         if scale_index == 0:
             return image
