@@ -29,7 +29,7 @@ class Model(object):
                     net = slim.conv2d_transpose(net, 32, [24, 24], padding='VALID')
                     net = slim.conv2d_transpose(net, 2, [14, 14], padding='VALID')
                     beliefs = [net] + [slim.conv2d_transpose(net, 2, [6, 6])
-                                       for _ in range(estimate_scale - 1)]
+                                       for _ in xrange(estimate_scale - 1)]
             m['temporal_belief'] = [_constrain_confidence(belief) for belief in beliefs]
             return m['temporal_belief']
 
@@ -51,7 +51,7 @@ class Model(object):
             h, w, c = estimate_shape
             m_h, m_w = int((h - 1) / 2), int((w - 1) / 2)
 
-            return tf.scatter_nd(tf.constant([[i, m_h, m_w] for i in range(batch_size)]),
+            return tf.scatter_nd(tf.constant([[i, m_h, m_w] for i in xrange(batch_size)]),
                                  tf.squeeze(reward), tf.constant([batch_size, h, w]))
 
         def _warp(temp_belief, prev_belief):
@@ -135,13 +135,13 @@ class Model(object):
                 with tf.variable_scope("VIN_prior", reuse=tf.AUTO_REUSE):
                     rewards_map = _fuse_belief(tf.concat([inputs, state], axis=3))
                     actions_map = slim.conv2d(rewards_map, num_actions, [3, 3])
-                    values_map = tf.reduce_max(actions_map, axis=3, keep_dims=True)
+                    values_map = tf.reduce_max(actions_map, axis=3, keepdims=True)
 
                 with tf.variable_scope("VIN", reuse=tf.AUTO_REUSE):
-                    for i in range(num_iterations - 1):
+                    for i in xrange(num_iterations - 1):
                         rv = tf.concat([rewards_map, values_map], axis=3)
                         actions_map = slim.conv2d(rv, num_actions, [3, 3])
-                        values_map = tf.reduce_max(actions_map, axis=3, keep_dims=True)
+                        values_map = tf.reduce_max(actions_map, axis=3, keepdims=True)
 
                 return values_map, values_map
 
