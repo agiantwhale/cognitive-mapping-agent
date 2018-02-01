@@ -3,6 +3,7 @@ import inspect
 import deepmind_lab as dl
 import deepmind_lab_gym as dlg
 import multiprocdmlab as mpdmlab
+import numpy as np
 
 DEEPMIND_RUNFILES_PATH = os.path.dirname(inspect.getfile(dl))
 DEEPMIND_SOURCE_PATH = os.path.abspath(DEEPMIND_RUNFILES_PATH + '/..' * 5)
@@ -47,3 +48,13 @@ def get_game_environment(mapname='training-09x09-0127', mode='training', multipr
         env = dlg.DeepmindLab(**params)
 
     return env
+
+
+def calculate_egomotion(previous_pose, current_pose):
+    previous_pos, previous_angle = previous_pose[:2], previous_pose[4]
+    current_pos, current_angle = current_pose[:2], current_pose[4]
+
+    rotation = current_angle - previous_angle
+    translation = np.linalg.norm(current_pos - previous_pos) * np.cos(rotation)
+
+    return [translation, rotation]

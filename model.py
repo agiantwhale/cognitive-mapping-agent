@@ -3,18 +3,15 @@ from tensorflow.contrib import slim
 
 
 class CMAP(object):
-    def _upscale_image(self, image, scale_index=1):
-        if scale_index == 0:
-            return image
-
+    def _upscale_image(self, image):
         estimate_size = self._estimate_size
-        crop_size = int(estimate_size / (2 ** scale_index))
+        crop_size = int(estimate_size / 4)
         image = image[:, crop_size:-crop_size, crop_size:-crop_size, :]
         image = tf.image.resize_bilinear(image, tf.constant([estimate_size, estimate_size]),
                                          align_corners=True)
         return image
 
-    def _build_mapper(self, visual_input, egomotion, reward, m={}, estimator=None):
+    def _build_mapper(self, visual_input, egomotion, reward, estimate_map, m={}, estimator=None):
         batch_size = self._batch_size
         estimate_scale = self._estimate_scale
         estimate_shape = self._estimate_shape
@@ -23,6 +20,8 @@ class CMAP(object):
             def _constrain_confidence(belief):
                 estimate, confidence = tf.unstack(belief, axis=3)
                 return tf.stack([estimate, tf.nn.sigmoid(confidence)], axis=3)
+
+            beliefs = []
 
             with slim.arg_scope([slim.conv2d, slim.fully_connected],
                                 activation_fn=tf.nn.relu,
@@ -39,8 +38,11 @@ class CMAP(object):
                     net = slim.conv2d_transpose(net, 64, [24, 24], padding='VALID')
                     net = slim.conv2d_transpose(net, 32, [24, 24], padding='VALID')
                     net = slim.conv2d_transpose(net, 2, [14, 14], padding='VALID')
-                    beliefs = [self._upscale_image(slim.conv2d_transpose(net, 2, [6, 6]), i)
-                               for i in xrange(estimate_scale)]
+
+                    beliefs.append(net)
+                    for i in xrange(estimate_scale - 1):
+                        beliefs.append(self._upscale_image(slim.conv2d_transpose(net, 2, [6, 6])))
+
             return [_constrain_confidence(belief) for belief in beliefs]
 
         def _apply_egomotion(tensor, scale_index, ego):
@@ -61,7 +63,7 @@ class CMAP(object):
             m_h, m_w = int((h - 1) / 2), int((w - 1) / 2)
 
             return tf.scatter_nd(tf.constant([[i, m_h, m_w] for i in xrange(batch_size)]),
-                                 tf.squeeze(reward), tf.constant([batch_size, h, w]))
+                                 tf.squeeze(reward, axis=1), tf.constant([batch_size, h, w]))
 
         def _warp(temp_belief, prev_belief):
             temp_estimate, temp_confidence, temp_rewards = tf.unstack(temp_belief, axis=3)
@@ -101,9 +103,8 @@ class CMAP(object):
         bilinear_cell = BiLinearSamplingCell()
         interm_beliefs, final_belief = tf.nn.dynamic_rnn(bilinear_cell,
                                                          (visual_input, egomotion, tf.expand_dims(reward, axis=2)),
-                                                         initial_state=bilinear_cell.zero_state(batch_size,
-                                                                                                tf.float32))
-        m['estimate_maps'] = interm_beliefs
+                                                         initial_state=estimate_map)
+        m['estimate_map_list'] = interm_beliefs
         return final_belief
 
     def _build_planner(self, scaled_beliefs, m={}):
@@ -177,35 +178,38 @@ class CMAP(object):
         current_input = tf.placeholder(tf.float32, [batch_size, None] + list(self._image_size) + [3])
         egomotion = tf.placeholder(tf.float32, (batch_size, None, 2))
         reward = tf.placeholder(tf.float32, (batch_size, None))
+        estimate_map_list = [tf.placeholder(tf.float32, (batch_size, estimate_size, estimate_size, 3))
+                             for _ in xrange(estimate_scale)]
 
-        scaled_beliefs = self._build_mapper(current_input, egomotion, reward, tensors, estimator=estimator)
-        actions = self._build_planner(scaled_beliefs)
+        scaled_beliefs = self._build_mapper(current_input, egomotion, reward, estimate_map_list, tensors,
+                                            estimator=estimator)
+        action = self._build_planner(scaled_beliefs, tensors)
 
         self._visual_input = current_input
         self._egomotion = egomotion
         self._reward = reward
-        self._actions = actions
+        self._estimate_map_list = estimate_map_list
+        self._action = action
 
         self._intermediate_tensors = tensors
-
-    @property
-    def intermediate_tensors(self):
-        return self._intermediate_tensors
 
     @property
     def input_tensors(self):
         return {
             'visual_input': self._visual_input,
             'egomotion': self._egomotion,
-            'reward': self._reward
+            'reward': self._reward,
+            'estimate_map_list': self._estimate_map_list
         }
 
     @property
+    def intermediate_tensors(self):
+        return self._intermediate_tensors
+
+    @property
     def output_tensors(self):
-        return {
-            'actions': self._actions,
-        }
+        return {'action': self._action}
 
 
 if __name__ == "__main__":
-    CMAP(batch_size=32)
+    CMAP()
