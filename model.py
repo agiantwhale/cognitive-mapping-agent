@@ -82,7 +82,7 @@ class CMAP(object):
 
             @property
             def output_size(self):
-                return []
+                return self.state_size
 
             def __call__(self, inputs, state, scope=None):
                 image, ego, re = inputs
@@ -132,7 +132,7 @@ class CMAP(object):
 
             @property
             def output_size(self):
-                return []
+                return self.state_size
 
             def __call__(self, inputs, state, scope=None):
                 # Upscale previous value map
@@ -162,8 +162,8 @@ class CMAP(object):
 
         return actions_logit
 
-    def __init__(self, batch_size=1, image_size=(320, 320), estimate_size=64, estimate_scale=2, estimator=None,
-                 num_actions=4, num_iterations=3):
+    def __init__(self, batch_size=1, image_size=(320, 320), estimate_size=64, estimate_scale=2,
+                 estimator=None, num_actions=4, num_iterations=3):
         self._batch_size = batch_size
         self._image_size = image_size
         self._estimate_size = estimate_size
