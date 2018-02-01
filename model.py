@@ -41,8 +41,7 @@ class CMAP(object):
                     net = slim.conv2d_transpose(net, 2, [14, 14], padding='VALID')
                     beliefs = [self._upscale_image(slim.conv2d_transpose(net, 2, [6, 6]), i)
                                for i in xrange(estimate_scale)]
-            m['temporal_belief'] = [_constrain_confidence(belief) for belief in beliefs]
-            return m['temporal_belief']
+            return [_constrain_confidence(belief) for belief in beliefs]
 
         def _apply_egomotion(tensor, scale_index, ego):
             translation, rotation = tf.unstack(ego, axis=1)
@@ -55,8 +54,7 @@ class CMAP(object):
             transform = tf.stack([cos_rot, sin_rot, tf.multiply(tf.negative(translation), scale),
                                   tf.negative(sin_rot), cos_rot, zero,
                                   zero, zero], axis=1)
-            m['warped_previous_belief'] = tf.contrib.image.transform(tensor, transform)
-            return m['warped_previous_belief']
+            return tf.contrib.image.transform(tensor, transform)
 
         def _delta_reward_map(reward):
             h, w, c = estimate_shape
@@ -101,12 +99,11 @@ class CMAP(object):
                 return outputs, outputs
 
         bilinear_cell = BiLinearSamplingCell()
-        intermediate_beliefs, final_belief = tf.nn.dynamic_rnn(bilinear_cell,
-                                                               (visual_input, egomotion,
-                                                                tf.expand_dims(reward, axis=2)),
-                                                               initial_state=bilinear_cell.zero_state(batch_size,
-                                                                                                      tf.float32))
-        m['estimate_maps'] = intermediate_beliefs
+        interm_beliefs, final_belief = tf.nn.dynamic_rnn(bilinear_cell,
+                                                         (visual_input, egomotion, tf.expand_dims(reward, axis=2)),
+                                                         initial_state=bilinear_cell.zero_state(batch_size,
+                                                                                                tf.float32))
+        m['estimate_maps'] = interm_beliefs
         return final_belief
 
     def _build_planner(self, scaled_beliefs, m={}):
@@ -155,10 +152,10 @@ class CMAP(object):
                 return values_map, values_map
 
         vin_cell = HierarchicalVINCell()
-        intermediate_values_map, final_values_map = tf.nn.dynamic_rnn(vin_cell, tf.stack(scaled_beliefs, axis=1),
-                                                                      initial_state=vin_cell.zero_state(batch_size,
-                                                                                                        tf.float32))
-        m['values_maps'] = intermediate_values_map
+        interm_values_map, final_values_map = tf.nn.dynamic_rnn(vin_cell, tf.stack(scaled_beliefs, axis=1),
+                                                                initial_state=vin_cell.zero_state(batch_size,
+                                                                                                  tf.float32))
+        m['values_maps'] = interm_values_map
 
         values_features = slim.flatten(final_values_map)
         actions_logit = tf.nn.softmax(slim.fully_connected(values_features, num_actions))
@@ -188,6 +185,12 @@ class CMAP(object):
         self._egomotion = egomotion
         self._reward = reward
         self._actions = actions
+
+        self._intermediate_tensors = tensors
+
+    @property
+    def intermediate_tensors(self):
+        return self._intermediate_tensors
 
     @property
     def input_tensors(self):
