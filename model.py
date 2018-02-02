@@ -25,8 +25,7 @@ class CMAP(object):
 
             with slim.arg_scope([slim.conv2d, slim.fully_connected],
                                 activation_fn=tf.nn.relu,
-                                weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
-                                weights_regularizer=slim.l2_regularizer(0.0005)):
+                                weights_initializer=tf.truncated_normal_initializer(stddev=0.01)):
                 with slim.arg_scope([slim.conv2d, slim.conv2d_transpose], stride=1, padding='SAME'):
                     net = slim.conv2d(image, 64, [5, 5])
                     net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
@@ -119,7 +118,6 @@ class CMAP(object):
             with slim.arg_scope([slim.conv2d],
                                 activation_fn=tf.nn.relu,
                                 weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
-                                weights_regularizer=slim.l2_regularizer(0.0005),
                                 stride=1, padding='SAME'):
                 with tf.variable_scope("fuser", reuse=tf.AUTO_REUSE):
                     net = slim.repeat(belief, 3, slim.conv2d, 6, [1, 1])
@@ -159,7 +157,7 @@ class CMAP(object):
         m['values_maps'] = interm_values_map
 
         values_features = slim.flatten(final_values_map)
-        actions_logit = tf.nn.softmax(slim.fully_connected(values_features, num_actions))
+        actions_logit = slim.fully_connected(values_features, num_actions)
 
         return actions_logit
 
@@ -175,21 +173,27 @@ class CMAP(object):
 
         tensors = {}
 
-        current_input = tf.placeholder(tf.float32, [batch_size, None] + list(self._image_size) + [3])
-        egomotion = tf.placeholder(tf.float32, (batch_size, None, 2))
-        reward = tf.placeholder(tf.float32, (batch_size, None))
-        estimate_map_list = [tf.placeholder(tf.float32, (batch_size, estimate_size, estimate_size, 3))
-                             for _ in xrange(estimate_scale)]
+        current_input = tf.placeholder(tf.float32, [batch_size, None] + list(self._image_size) + [3],
+                                       name='visual_input')
+        egomotion = tf.placeholder(tf.float32, (batch_size, None, 2), name='egomotion')
+        reward = tf.placeholder(tf.float32, (batch_size, None), name='reward')
+        estimate_map_list = [tf.placeholder(tf.float32, (batch_size, estimate_size, estimate_size, 3),
+                                            name='estimate_map_{}'.format(i))
+                             for i in xrange(estimate_scale)]
+        optimal_action = tf.placeholder(tf.float32, (batch_size, num_actions), name='optimal_action')
 
         scaled_beliefs = self._build_mapper(current_input, egomotion, reward, estimate_map_list, tensors,
                                             estimator=estimator)
-        action = self._build_planner(scaled_beliefs, tensors)
+        unscaled_action = self._build_planner(scaled_beliefs, tensors)
 
         self._visual_input = current_input
         self._egomotion = egomotion
         self._reward = reward
         self._estimate_map_list = estimate_map_list
-        self._action = action
+        self._optimal_action = optimal_action
+        self._action = tf.nn.softmax(unscaled_action)
+        self._loss = tf.losses.softmax_cross_entropy(optimal_action,
+                                                     unscaled_action) + tf.losses.get_regularization_loss()
 
         self._intermediate_tensors = tensors
 
@@ -199,7 +203,8 @@ class CMAP(object):
             'visual_input': self._visual_input,
             'egomotion': self._egomotion,
             'reward': self._reward,
-            'estimate_map_list': self._estimate_map_list
+            'estimate_map_list': self._estimate_map_list,
+            'optimal_action': self._optimal_action
         }
 
     @property
@@ -208,7 +213,10 @@ class CMAP(object):
 
     @property
     def output_tensors(self):
-        return {'action': self._action}
+        return {
+            'action': self._action,
+            'loss': self._loss
+        }
 
 
 if __name__ == "__main__":
