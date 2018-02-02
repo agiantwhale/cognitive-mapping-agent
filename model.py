@@ -192,8 +192,8 @@ class CMAP(object):
         self._estimate_map_list = estimate_map_list
         self._optimal_action = optimal_action
         self._action = tf.nn.softmax(unscaled_action)
-        self._loss = tf.losses.softmax_cross_entropy(optimal_action,
-                                                     unscaled_action) + tf.losses.get_regularization_loss()
+        self._loss = tf.losses.softmax_cross_entropy(optimal_action, unscaled_action)
+        self._loss += tf.losses.get_regularization_loss()
 
         self._intermediate_tensors = tensors
 
