@@ -44,7 +44,7 @@ def main(_):
     rewards_history = deque([0.], FLAGS.history_length)
     estimate_maps = [np.zeros((1, 64, 64, 3))] * 2
 
-    optimizer = tf.train.RMSPropOptimizer(learning_rate=1)
+    optimizer = tf.train.RMSPropOptimizer(learning_rate=0.01)
     train_op = optimizer.minimize(net.output_tensors['loss'])
     init_op = tf.global_variables_initializer()
 
@@ -62,9 +62,10 @@ def main(_):
                                                               'estimate_map_list': estimate_maps,
                                                               'optimal_action': np.array([optimal_action])})
 
-            results = sess.run([net.output_tensors['action'], net.output_tensors['loss']] + net.intermediate_tensors['estimate_map_list'],
+            results = sess.run([net.output_tensors['action'], net.output_tensors['loss']] + net.intermediate_tensors[
+                'estimate_map_list'],
                                feed_dict=feed_dict)
-            for i in range(100):
+            for _ in range(100):
                 sess.run(train_op, feed_dict=feed_dict)
             # save_path = saver.save(sess, FLAGS.logdir)
             # print("Model saved in path: %s" % save_path)
