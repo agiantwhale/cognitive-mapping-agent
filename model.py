@@ -12,7 +12,6 @@ class CMAP(object):
         return image
 
     def _build_mapper(self, visual_input, egomotion, reward, estimate_map, m={}, estimator=None):
-        batch_size = self._batch_size
         estimate_scale = self._estimate_scale
         estimate_shape = self._estimate_shape
 
@@ -50,7 +49,7 @@ class CMAP(object):
             cos_rot = tf.cos(rotation)
             sin_rot = tf.sin(rotation)
             zero = tf.zeros_like(rotation)
-            scale = tf.constant(2 ** scale_index, dtype=tf.float32, shape=(batch_size,))
+            scale = tf.constant(2 ** scale_index, dtype=tf.float32)
 
             transform = tf.stack([cos_rot, sin_rot, tf.multiply(tf.negative(translation), scale),
                                   tf.negative(sin_rot), cos_rot, zero,
@@ -61,8 +60,8 @@ class CMAP(object):
             h, w, c = estimate_shape
             m_h, m_w = int((h - 1) / 2), int((w - 1) / 2)
 
-            return tf.scatter_nd(tf.constant([[i, m_h, m_w] for i in xrange(batch_size)]),
-                                 tf.squeeze(reward, axis=1), tf.constant([batch_size, h, w]))
+            return tf.pad(tf.expand_dims(reward, axis=2),
+                          tf.constant([[0, 0], [m_h - 1, w - m_h], [m_w - 1, w - m_w]]))
 
         def _warp(temp_belief, prev_belief):
             temp_estimate, temp_confidence, temp_rewards = tf.unstack(temp_belief, axis=3)
@@ -107,8 +106,8 @@ class CMAP(object):
         return final_belief
 
     def _build_planner(self, scaled_beliefs, m={}):
+        batch_size = tf.shape(scaled_beliefs[0])[0]
         image_scaler = self._upscale_image
-        batch_size = self._batch_size
         estimate_size = self._estimate_size
         value_map_size = (estimate_size, estimate_size, 1)
         num_actions = self._num_actions
@@ -161,9 +160,8 @@ class CMAP(object):
 
         return actions_logit
 
-    def __init__(self, batch_size=1, image_size=(320, 320), estimate_size=64, estimate_scale=2,
+    def __init__(self, image_size=(320, 320), estimate_size=64, estimate_scale=2,
                  estimator=None, num_actions=4, num_iterations=3):
-        self._batch_size = batch_size
         self._image_size = image_size
         self._estimate_size = estimate_size
         self._estimate_shape = (estimate_size, estimate_size, 3)
@@ -173,14 +171,14 @@ class CMAP(object):
 
         tensors = {}
 
-        current_input = tf.placeholder(tf.float32, [batch_size, None] + list(self._image_size) + [3],
+        current_input = tf.placeholder(tf.float32, [None, None] + list(self._image_size) + [3],
                                        name='visual_input')
-        egomotion = tf.placeholder(tf.float32, (batch_size, None, 2), name='egomotion')
-        reward = tf.placeholder(tf.float32, (batch_size, None), name='reward')
-        estimate_map_list = [tf.placeholder(tf.float32, (batch_size, estimate_size, estimate_size, 3),
+        egomotion = tf.placeholder(tf.float32, (None, None, 2), name='egomotion')
+        reward = tf.placeholder(tf.float32, (None, None), name='reward')
+        estimate_map_list = [tf.placeholder(tf.float32, (None, estimate_size, estimate_size, 3),
                                             name='estimate_map_{}'.format(i))
                              for i in xrange(estimate_scale)]
-        optimal_action = tf.placeholder(tf.float32, (batch_size, num_actions), name='optimal_action')
+        optimal_action = tf.placeholder(tf.float32, (None, num_actions), name='optimal_action')
 
         scaled_beliefs = self._build_mapper(current_input, egomotion, reward, estimate_map_list, tensors,
                                             estimator=estimator)
