@@ -20,7 +20,10 @@ def prepare_feed_dict(tensors, data):
             continue
 
         if not isinstance(v, list):
-            feed_dict[v] = data[k].astype(v.dtype.as_numpy_dtype)
+            if isinstance(data[k], np.ndarray):
+                feed_dict[v] = data[k].astype(v.dtype.as_numpy_dtype)
+            else:
+                feed_dict[v] = data[k]
         else:
             for t, d in zip(v, data[k]):
                 feed_dict[t] = d.astype(t.dtype.as_numpy_dtype)
@@ -44,7 +47,7 @@ def main(_):
     rewards_history = deque([0.], FLAGS.history_length)
     estimate_maps = [np.zeros((1, 64, 64, 3))] * 2
 
-    optimizer = tf.train.RMSPropOptimizer(learning_rate=0.01)
+    optimizer = tf.train.RMSPropOptimizer(learning_rate=0.005)
     train_op = optimizer.minimize(net.output_tensors['loss'])
     init_op = tf.global_variables_initializer()
 
@@ -60,11 +63,20 @@ def main(_):
                                                               'egomotion': np.array([egomotion_history]),
                                                               'reward': np.array([rewards_history]),
                                                               'estimate_map_list': estimate_maps,
-                                                              'optimal_action': np.array([optimal_action])})
+                                                              'optimal_action': np.array([optimal_action]),
+                                                              'is_training': False})
 
-            results = sess.run([net.output_tensors['action'], net.output_tensors['loss']] + net.intermediate_tensors[
-                'estimate_map_list'],
+            results = sess.run([net.output_tensors['action'], net.output_tensors['loss']] +
+                               net.intermediate_tensors['estimate_map_list'],
                                feed_dict=feed_dict)
+
+            feed_dict = prepare_feed_dict(net.input_tensors, {'visual_input': np.array([observation_history]),
+                                                              'egomotion': np.array([egomotion_history]),
+                                                              'reward': np.array([rewards_history]),
+                                                              'estimate_map_list': estimate_maps,
+                                                              'optimal_action': np.array([optimal_action]),
+                                                              'is_training': True})
+
             for _ in range(100):
                 sess.run(train_op, feed_dict=feed_dict)
             # save_path = saver.save(sess, FLAGS.logdir)

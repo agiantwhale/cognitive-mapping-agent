@@ -12,6 +12,7 @@ class CMAP(object):
         return image
 
     def _build_mapper(self, visual_input, egomotion, reward, estimate_map, m={}, estimator=None):
+        is_training = self._is_training
         estimate_scale = self._estimate_scale
         estimate_shape = self._estimate_shape
 
@@ -24,9 +25,10 @@ class CMAP(object):
 
             with slim.arg_scope([slim.conv2d, slim.fully_connected],
                                 activation_fn=tf.nn.relu,
-                                weights_initializer=tf.truncated_normal_initializer(stddev=0.01)):
+                                weights_initializer=tf.truncated_normal_initializer(stddev=0.0003)):
                 with slim.arg_scope([slim.conv2d, slim.conv2d_transpose], stride=1, padding='SAME'):
-                    net = slim.conv2d(image, 64, [5, 5])
+                    net = slim.batch_norm(image, is_training=is_training)
+                    net = slim.conv2d(net, 64, [5, 5])
                     net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
                     net = slim.conv2d(net, 128, [5, 5])
                     net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
@@ -168,6 +170,7 @@ class CMAP(object):
         self._estimate_scale = estimate_scale
         self._num_actions = num_actions
         self._num_iterations = num_iterations
+        self._is_training = tf.placeholder(tf.bool)
 
         tensors = {}
 
@@ -198,6 +201,7 @@ class CMAP(object):
     @property
     def input_tensors(self):
         return {
+            'is_training': self._is_training,
             'visual_input': self._visual_input,
             'egomotion': self._egomotion,
             'reward': self._reward,
