@@ -11,8 +11,13 @@ class CMAP(object):
                                          align_corners=True)
         return image
 
-    def _build_mapper(self, visual_input, egomotion, reward, estimate_map, m={}, estimator=None):
+    def _build_mapper(self, m={}, estimator=None):
         is_training = self._is_training
+        sequence_length = self._sequence_length
+        visual_input = self._visual_input
+        egomotion = self._egomotion
+        reward = self._reward
+        estimate_map = self._estimate_map_list
         estimate_scale = self._estimate_scale
         estimate_shape = self._estimate_shape
 
@@ -103,6 +108,7 @@ class CMAP(object):
         bilinear_cell = BiLinearSamplingCell()
         interm_beliefs, final_belief = tf.nn.dynamic_rnn(bilinear_cell,
                                                          (visual_input, egomotion, tf.expand_dims(reward, axis=2)),
+                                                         sequence_length=sequence_length,
                                                          initial_state=estimate_map)
         m['estimate_map_list'] = interm_beliefs
         return final_belief
@@ -172,28 +178,22 @@ class CMAP(object):
         self._num_iterations = num_iterations
         self._is_training = tf.placeholder(tf.bool)
 
+        self._sequence_length = tf.placeholder(tf.int32, [None], name='visual_input')
+        self._visual_input = tf.placeholder(tf.float32, [None, None] + list(self._image_size) + [3],
+                                            name='visual_input')
+        self._egomotion = tf.placeholder(tf.float32, (None, None, 2), name='egomotion')
+        self._reward = tf.placeholder(tf.float32, (None, None), name='reward')
+        self._estimate_map_list = [tf.placeholder(tf.float32, (None, estimate_size, estimate_size, 3),
+                                                  name='estimate_map_{}'.format(i))
+                                   for i in xrange(estimate_scale)]
+        self._optimal_action = tf.placeholder(tf.float32, (None, num_actions), name='optimal_action')
+
         tensors = {}
-
-        current_input = tf.placeholder(tf.float32, [None, None] + list(self._image_size) + [3],
-                                       name='visual_input')
-        egomotion = tf.placeholder(tf.float32, (None, None, 2), name='egomotion')
-        reward = tf.placeholder(tf.float32, (None, None), name='reward')
-        estimate_map_list = [tf.placeholder(tf.float32, (None, estimate_size, estimate_size, 3),
-                                            name='estimate_map_{}'.format(i))
-                             for i in xrange(estimate_scale)]
-        optimal_action = tf.placeholder(tf.float32, (None, num_actions), name='optimal_action')
-
-        scaled_beliefs = self._build_mapper(current_input, egomotion, reward, estimate_map_list, tensors,
-                                            estimator=estimator)
+        scaled_beliefs = self._build_mapper(tensors, estimator=estimator)
         unscaled_action = self._build_planner(scaled_beliefs, tensors)
 
-        self._visual_input = current_input
-        self._egomotion = egomotion
-        self._reward = reward
-        self._estimate_map_list = estimate_map_list
-        self._optimal_action = optimal_action
         self._action = tf.nn.softmax(unscaled_action)
-        self._loss = tf.losses.softmax_cross_entropy(optimal_action, unscaled_action)
+        self._loss = tf.losses.softmax_cross_entropy(self._optimal_action, unscaled_action)
         self._loss += tf.losses.get_regularization_loss()
 
         self._intermediate_tensors = tensors
@@ -202,6 +202,7 @@ class CMAP(object):
     def input_tensors(self):
         return {
             'is_training': self._is_training,
+            'sequence_length': self._sequence_length,
             'visual_input': self._visual_input,
             'egomotion': self._egomotion,
             'reward': self._reward,
