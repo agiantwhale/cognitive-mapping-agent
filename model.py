@@ -27,13 +27,13 @@ class CMAP(object):
                 return tf.stack([estimate, tf.nn.sigmoid(confidence)], axis=3)
 
             beliefs = []
+            net = image
 
             with slim.arg_scope([slim.conv2d, slim.fully_connected],
                                 activation_fn=tf.nn.relu,
                                 weights_initializer=tf.truncated_normal_initializer(stddev=0.0003)):
                 with slim.arg_scope([slim.conv2d, slim.conv2d_transpose], stride=1, padding='SAME'):
                     with tf.variable_scope("free_space_estimator", reuse=tf.AUTO_REUSE):
-                        net = slim.batch_norm(image, is_training=is_training)
                         net = slim.conv2d(net, 64, [5, 5])
                         net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
                         net = slim.conv2d(net, 128, [5, 5])
@@ -106,9 +106,10 @@ class CMAP(object):
 
                 return outputs, outputs
 
+        normalized_input = slim.batch_norm(visual_input, is_training=is_training)
         bilinear_cell = BiLinearSamplingCell()
         interm_beliefs, final_belief = tf.nn.dynamic_rnn(bilinear_cell,
-                                                         (visual_input, egomotion, tf.expand_dims(reward, axis=2)),
+                                                         (normalized_input, egomotion, tf.expand_dims(reward, axis=2)),
                                                          sequence_length=sequence_length,
                                                          initial_state=estimate_map)
         m['estimate_map_list'] = interm_beliefs
