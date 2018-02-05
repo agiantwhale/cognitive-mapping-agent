@@ -7,9 +7,11 @@ from model import CMAP
 import copy
 
 flags = tf.app.flags
-flags.DEFINE_integer('batch_size', 1, 'Number of environments to run.')
-flags.DEFINE_integer('history_length', -1, 'History length that should be maintained by mapper for back-propagation.')
+flags.DEFINE_string('maps', 'training-09x09-0127', 'Comma separated game environment list')
 flags.DEFINE_string('logdir', 'output', 'Log directory')
+flags.DEFINE_boolean('debug', False, 'Save debugging information')
+flags.DEFINE_integer('num_games', 1000, 'Number of games to play.')
+flags.DEFINE_integer('batch_size', 32, 'Number of environments to run.')
 FLAGS = flags.FLAGS
 
 
@@ -63,7 +65,7 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
     # Training
     # We can just download more GPU ram from the internet, right?
     cumulative_loss = 0
-    for i in xrange(1, len(optimal_action_history), FLAGS.batch_size):
+    for i in xrange(0, len(optimal_action_history), FLAGS.batch_size):
         batch_end_index = i + FLAGS.batch_size
 
         concat_observation_history = [observation_history[:batch_end_index]] * FLAGS.batch_size
@@ -104,7 +106,7 @@ def prepare_feed_dict(tensors, data):
 
 
 def main(_):
-    env = environment.get_game_environment()
+    env = environment.get_game_environment(FLAGS.maps)
     exp = expert.Expert()
     net = CMAP()
 
@@ -115,7 +117,7 @@ def main(_):
                         logdir=FLAGS.logdir,
                         train_step_fn=DAGGER_train_step,
                         train_step_kwargs=dict(env=env, exp=exp, net=net),
-                        number_of_steps=1000,
+                        number_of_steps=FLAGS.num_games,
                         save_summaries_secs=300,
                         save_interval_secs=600)
 

@@ -32,21 +32,22 @@ class CMAP(object):
                                 activation_fn=tf.nn.relu,
                                 weights_initializer=tf.truncated_normal_initializer(stddev=0.0003)):
                 with slim.arg_scope([slim.conv2d, slim.conv2d_transpose], stride=1, padding='SAME'):
-                    net = slim.batch_norm(image, is_training=is_training)
-                    net = slim.conv2d(net, 64, [5, 5])
-                    net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
-                    net = slim.conv2d(net, 128, [5, 5])
-                    net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
-                    net = slim.conv2d(net, 256, [5, 5])
-                    net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
-                    net = slim.fully_connected(net, 200)
-                    net = slim.conv2d_transpose(net, 64, [24, 24], padding='VALID')
-                    net = slim.conv2d_transpose(net, 32, [24, 24], padding='VALID')
-                    net = slim.conv2d_transpose(net, 2, [14, 14], padding='VALID')
+                    with tf.variable_scope("free_space_estimator", reuse=tf.AUTO_REUSE):
+                        net = slim.batch_norm(image, is_training=is_training)
+                        net = slim.conv2d(net, 64, [5, 5])
+                        net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
+                        net = slim.conv2d(net, 128, [5, 5])
+                        net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
+                        net = slim.conv2d(net, 256, [5, 5])
+                        net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
+                        net = slim.fully_connected(net, 200)
+                        net = slim.conv2d_transpose(net, 64, [24, 24], padding='VALID')
+                        net = slim.conv2d_transpose(net, 32, [24, 24], padding='VALID')
+                        net = slim.conv2d_transpose(net, 2, [14, 14], padding='VALID')
 
-                    beliefs.append(net)
-                    for i in xrange(estimate_scale - 1):
-                        beliefs.append(self._upscale_image(slim.conv2d_transpose(net, 2, [6, 6])))
+                        beliefs.append(net)
+                        for i in xrange(estimate_scale - 1):
+                            beliefs.append(self._upscale_image(slim.conv2d_transpose(net, 2, [6, 6])))
 
             return [_constrain_confidence(belief) for belief in beliefs]
 
