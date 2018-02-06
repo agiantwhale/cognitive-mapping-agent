@@ -8,7 +8,7 @@ import copy
 
 flags = tf.app.flags
 flags.DEFINE_string('maps', 'training-09x09-0127', 'Comma separated game environment list')
-flags.DEFINE_string('logdir', 'output', 'Log directory')
+flags.DEFINE_string('logdir', './output', 'Log directory')
 flags.DEFINE_boolean('debug', False, 'Save debugging information')
 flags.DEFINE_integer('num_games', 1000, 'Number of games to play.')
 flags.DEFINE_integer('batch_size', 32, 'Number of environments to run.')
@@ -73,14 +73,14 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
         concat_egomotion_history = [egomotion_history[:batch_end_index]] * batch_size
         concat_reward_history = [rewards_history[:batch_end_index]] * batch_size
         concat_optimal_action_history = optimal_action_history[i:batch_end_index]
-        concat_estimate_map_list = [estimate_maps_history[0]] * batch_size
+        concat_estimate_map_list = [np.zeros((batch_size, 64, 64, 3))] * 2
 
-        feed_dict = prepare_feed_dict(net.input_tensors, {'sequence_length': np.arange(1, batch_end_index),
+        feed_dict = prepare_feed_dict(net.input_tensors, {'sequence_length': np.arange(i, batch_end_index) + 1,
                                                           'visual_input': np.array(concat_observation_history),
                                                           'egomotion': np.array(concat_egomotion_history),
                                                           'reward': np.array(concat_reward_history),
                                                           'optimal_action': np.array(concat_optimal_action_history),
-                                                          'estimate_map_list': np.array(concat_estimate_map_list),
+                                                          'estimate_map_list': concat_estimate_map_list,
                                                           'is_training': True})
 
         total_loss, np_global_step = sess.run([train_op, global_step], feed_dict=feed_dict)
