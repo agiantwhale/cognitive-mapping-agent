@@ -145,10 +145,8 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
 
     summary_writer.add_summary(_build_trajectory_summary(cumulative_loss, rewards_history, info_history, exp),
                                global_step=np_global_step)
-
-    if FLAGS.debug:
-        summary_writer.add_summary(_build_walltime_summary(train_step_start, train_step_eval, train_step_end),
-                                   global_step=np_global_step)
+    summary_writer.add_summary(_build_walltime_summary(train_step_start, train_step_eval, train_step_end),
+                               global_step=np_global_step)
 
     sess.run(update_global_step_op)
 
