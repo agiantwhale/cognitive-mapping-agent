@@ -4,8 +4,10 @@ from tensorflow.contrib import slim
 import environment
 import expert
 from model import CMAP
+import os
 import copy
 import time
+import cv2
 
 flags = tf.app.flags
 flags.DEFINE_string('maps', 'training-09x09-0127', 'Comma separated game environment list')
@@ -23,10 +25,25 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
     summary_writer = train_step_kwargs['summary_writer']
 
     def _build_observation_summary(info_history):
-        return tf.Summary(value=[tf.Summary.Value(tag='{}[{}]-{}'.format(key, idx, step), simple_value=value)
-                                 for key in ('GOAL.LOC', 'SPAWN.LOC', 'POSE')
-                                 for step, info in enumerate(info_history)
-                                 for idx, value in enumerate(info[key])])
+        def _node_to_game_coordinate(node):
+            row, col = node
+            return (col + 0.5) * 100, (env._height - row - 0.5) * 100
+
+        summary_text = os.linesep.join('{}[{}]-{}'.format(key, idx, step)
+                                       for key in ('GOAL.LOC', 'SPAWN.LOC', 'POSE')
+                                       for step, info in enumerate(info_history)
+                                       for idx, value in enumerate(info[key]))
+        text_summary = tf.summary.text('history', tf.convert_to_tensor(summary_text))
+
+        image = np.zeros((env._width * 100, env._height * 100, 3), dtype=np.uint8)
+        image.fill(255)
+        for info in info_history:
+            cv2.circle(image, _node_to_game_coordinate(info['GOAL.LOC']), 3, (255, 0, 0), -1)
+            cv2.circle(image, _node_to_game_coordinate(info['SPAWN.LOC']), 3, (0, 255, 0), -1)
+            cv2.circle(image, info['POSE'][:2], 1, (0, 0, 255), -1)
+        image_summary = tf.summary.image('trajectory', tf.convert_to_tensor(image))
+
+        return [text_summary, image_summary]
 
     def _build_walltime_summary(begin, data, end):
         return tf.Summary(value=[tf.Summary.Value(tag='DAGGER_eval_walltime', simple_value=(data - begin)),
@@ -82,7 +99,6 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
     assert len(optimal_action_history) == len(observation_history) == len(egomotion_history) == len(rewards_history)
 
     # Training
-    # We can just download more GPU ram from the internet, right?
     cumulative_loss = 0
     for i in xrange(0, len(optimal_action_history), FLAGS.batch_size):
         batch_end_index = min(len(optimal_action_history), i + FLAGS.batch_size)
@@ -102,12 +118,17 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
                                                           'estimate_map_list': concat_estimate_map_list,
                                                           'is_training': True})
 
-        total_loss, np_global_step = sess.run([train_op, global_step], feed_dict=feed_dict)
+        total_loss = sess.run(train_op, feed_dict=feed_dict)
         cumulative_loss += total_loss
 
     train_step_end = time.time()
 
-    summary_writer.add_summary(_build_observation_summary(info_history), global_step=np_global_step)
+    np_global_step = sess.run(global_step)
+
+    observation_summaries = sess.run(_build_observation_summary(info_history))
+    for summary in observation_summaries:
+        summary_writer.add_summary(summary, global_step=np_global_step)
+
     if FLAGS.debug:
         summary_writer.add_summary(_build_walltime_summary(train_step_start, train_step_eval, train_step_end),
                                    global_step=np_global_step)
@@ -140,6 +161,7 @@ def main(_):
 
     optimizer = tf.train.AdamOptimizer()
     train_op = slim.learning.create_train_op(net.output_tensors['loss'], optimizer)
+    tf.summary.scalar('losses/total_loss', net.output_tensors['loss'])
 
     slim.learning.train(train_op=train_op,
                         logdir=FLAGS.logdir,
