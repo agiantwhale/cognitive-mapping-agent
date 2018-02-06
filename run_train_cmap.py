@@ -30,7 +30,7 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
 
     update_global_step_op = train_step_kwargs['update_global_step_op']
 
-    def _build_trajectory_summary(loss, rewards_history, info_history, exp):
+    def _build_trajectory_summary(rate, loss, rewards_history, info_history, exp):
         image = np.ones((28 + exp._width * 100, 28 + exp._height * 100, 3), dtype=np.uint8) * 255
 
         def _node_to_game_coordinate(node):
@@ -51,6 +51,7 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
                                                   image=tf.Summary.Image(encoded_image_string=encoded,
                                                                          height=image.shape[0],
                                                                          width=image.shape[1])),
+                                 tf.Summary.Value(tag='losses/supervision_rate', simple_value=rate),
                                  tf.Summary.Value(tag='losses/loss', simple_value=loss),
                                  tf.Summary.Value(tag='losses/reward', simple_value=sum(rewards_history))])
 
@@ -143,8 +144,9 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
 
     train_step_end = time.time()
 
-    summary_writer.add_summary(_build_trajectory_summary(cumulative_loss, rewards_history, info_history, exp),
-                               global_step=np_global_step)
+    summary_writer.add_summary(
+        _build_trajectory_summary(random_rate, cumulative_loss, rewards_history, info_history, exp),
+        global_step=np_global_step)
     summary_writer.add_summary(_build_walltime_summary(train_step_start, train_step_eval, train_step_end),
                                global_step=np_global_step)
 
