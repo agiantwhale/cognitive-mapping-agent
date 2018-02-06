@@ -63,7 +63,7 @@ class CMAP(object):
             transform = tf.stack([cos_rot, sin_rot, tf.multiply(tf.negative(translation), scale),
                                   tf.negative(sin_rot), cos_rot, zero,
                                   zero, zero], axis=1)
-            return tf.contrib.image.transform(tensor, transform)
+            return tf.contrib.image.transform(tensor, transform, interpolation='BILINEAR')
 
         def _delta_reward_map(reward):
             h, w, c = estimate_shape
@@ -119,6 +119,7 @@ class CMAP(object):
 
     def _build_planner(self, scaled_beliefs, m={}):
         debug = self._debug
+        is_training = self._is_training
         batch_size = tf.shape(scaled_beliefs[0])[0]
         image_scaler = self._upscale_image
         estimate_size = self._estimate_size
@@ -162,8 +163,9 @@ class CMAP(object):
 
                 return values_map, values_map
 
+        beliefs = tf.stack([slim.batch_norm(belief, is_training=is_training) for belief in scaled_beliefs], axis=1)
         vin_cell = HierarchicalVINCell()
-        interm_values_map, final_values_map = tf.nn.dynamic_rnn(vin_cell, tf.stack(scaled_beliefs, axis=1),
+        interm_values_map, final_values_map = tf.nn.dynamic_rnn(vin_cell, beliefs,
                                                                 initial_state=vin_cell.zero_state(batch_size,
                                                                                                   tf.float32),
                                                                 swap_memory=True)
@@ -175,7 +177,7 @@ class CMAP(object):
         return actions_logit
 
     def __init__(self, image_size=(80, 80), estimate_size=64, estimate_scale=2,
-                 estimator=None, num_actions=4, num_iterations=24, debug=False):
+                 estimator=None, num_actions=4, num_iterations=16, debug=False):
         self._debug = debug
         self._image_size = image_size
         self._estimate_size = estimate_size
