@@ -146,8 +146,8 @@ def main(_):
                         train_step_fn=DAGGER_train_step,
                         train_step_kwargs=dict(env=env, exp=exp, net=net),
                         number_of_steps=FLAGS.num_games,
-                        save_summaries_secs=300,
-                        save_interval_secs=600)
+                        save_summaries_secs=300 if not FLAGS.debug else 30,
+                        save_interval_secs=600 if not FLAGS.debug else 60)
 
 
 if __name__ == '__main__':
