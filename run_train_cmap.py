@@ -141,8 +141,6 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
         total_loss = sess.run(train_op, feed_dict=feed_dict)
         cumulative_loss += total_loss
 
-    cumulative_loss /= len(info_history)
-
     train_step_end = time.time()
 
     summary_writer.add_summary(
@@ -153,7 +151,12 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
 
     sess.run(update_global_step_op)
 
-    return cumulative_loss, False
+    if 'should_stop' in train_step_kwargs:
+        should_stop = sess.run(train_step_kwargs['should_stop'])
+    else:
+        should_stop = False
+
+    return cumulative_loss, should_stop
 
 
 def prepare_feed_dict(tensors, data):
