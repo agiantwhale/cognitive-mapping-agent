@@ -34,7 +34,7 @@ def get_game_environment(mapname='training-09x09-0127', mode='training', multipr
                        , chosen_map=mapname
                        , mapnames=mapname
                        , mapstrings=mapstrings
-                       , apple_prob=0.9
+                       , apple_prob=0
                        , episode_length_seconds=5),
         'action_mapper': dlg.ActionMapperDiscrete,
         'additional_observation_types': ['GOAL.LOC', 'SPAWN.LOC', 'POSE', 'GOAL.FOUND']
