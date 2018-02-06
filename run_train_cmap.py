@@ -13,6 +13,7 @@ flags = tf.app.flags
 flags.DEFINE_string('maps', 'training-09x09-0127', 'Comma separated game environment list')
 flags.DEFINE_string('logdir', './output/dummy', 'Log directory')
 flags.DEFINE_boolean('debug', False, 'Save debugging information')
+flags.DEFINE_boolean('multiproc', False, 'Multiproc environment')
 flags.DEFINE_integer('num_games', 1000, 'Number of games to play')
 flags.DEFINE_integer('batch_size', 1, 'Number of environments to run')
 flags.DEFINE_float('decay', 0.999, 'DAGGER decay')
@@ -176,7 +177,7 @@ def prepare_feed_dict(tensors, data):
 def main(_):
     tf.reset_default_graph()
 
-    env = environment.get_game_environment(FLAGS.maps)
+    env = environment.get_game_environment(FLAGS.maps, multiproc=FLAGS.multiproc)
     exp = expert.Expert()
     net = CMAP(debug=FLAGS.debug)
 
