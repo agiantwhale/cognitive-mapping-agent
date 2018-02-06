@@ -15,6 +15,7 @@ flags.DEFINE_string('logdir', './output/dummy', 'Log directory')
 flags.DEFINE_boolean('debug', False, 'Save debugging information')
 flags.DEFINE_integer('num_games', 1000, 'Number of games to play')
 flags.DEFINE_integer('batch_size', 1, 'Number of environments to run')
+flags.DEFINE_float('decay', 0.999, 'DAGGER decay')
 FLAGS = flags.FLAGS
 
 
@@ -24,35 +25,45 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
     net = train_step_kwargs['net']
     summary_writer = train_step_kwargs['summary_writer']
 
-    def _build_observation_summary(info_history):
+    step_history = train_step_kwargs['step_history']
+    step_history_op = train_step_kwargs['step_history_op']
+
+    update_global_step_op = train_step_kwargs['update_global_step_op']
+
+    def _build_trajectory_summary(loss, rewards_history, info_history, exp):
+        image = np.ones((28 + exp._width * 100, 28 + exp._height * 100, 3), dtype=np.uint8) * 255
+
         def _node_to_game_coordinate(node):
             row, col = node
-            return (col + 0.5) * 100, (env._height - row - 0.5) * 100
+            return 14 + int((col + 0.5) * 100), 14 + int((row + 0.5) * 100)
 
-        summary_text = os.linesep.join('{}[{}]-{}'.format(key, idx, step)
-                                       for key in ('GOAL.LOC', 'SPAWN.LOC', 'POSE')
-                                       for step, info in enumerate(info_history)
-                                       for idx, value in enumerate(info[key]))
-        text_summary = tf.summary.text('history', tf.convert_to_tensor(summary_text))
+        def _pose_to_game_coordinate(pose):
+            x, y = pose[:2]
+            return 14 + int(x), 14 + image.shape[1] - int(y)
 
-        image = np.zeros((env._width * 100, env._height * 100, 3), dtype=np.uint8)
-        image.fill(255)
         for info in info_history:
-            cv2.circle(image, _node_to_game_coordinate(info['GOAL.LOC']), 3, (255, 0, 0), -1)
-            cv2.circle(image, _node_to_game_coordinate(info['SPAWN.LOC']), 3, (0, 255, 0), -1)
-            cv2.circle(image, info['POSE'][:2], 1, (0, 0, 255), -1)
-        image_summary = tf.summary.image('trajectory', tf.convert_to_tensor(image))
+            cv2.circle(image, _node_to_game_coordinate(info['GOAL.LOC']), 10, (255, 0, 0), -1)
+            cv2.circle(image, _node_to_game_coordinate(info['SPAWN.LOC']), 10, (0, 255, 0), -1)
+            cv2.circle(image, _pose_to_game_coordinate(info['POSE']), 4, (0, 0, 255), -1)
+        encoded = cv2.imencode('.png', image)[1].tostring()
 
-        return [text_summary, image_summary]
+        return tf.Summary(value=[tf.Summary.Value(tag='losses/trajectory',
+                                                  image=tf.Summary.Image(encoded_image_string=encoded,
+                                                                         height=image.shape[0],
+                                                                         width=image.shape[1])),
+                                 tf.Summary.Value(tag='losses/loss', simple_value=loss),
+                                 tf.Summary.Value(tag='losses/reward', simple_value=sum(rewards_history))])
 
     def _build_walltime_summary(begin, data, end):
-        return tf.Summary(value=[tf.Summary.Value(tag='DAGGER_eval_walltime', simple_value=(data - begin)),
-                                 tf.Summary.Value(tag='DAGGER_train_walltime', simple_value=(end - data)),
-                                 tf.Summary.Value(tag='DAGGER_complete_walltime', simple_value=(end - begin))])
+        return tf.Summary(value=[tf.Summary.Value(tag='debug/DAGGER_eval_walltime', simple_value=(data - begin)),
+                                 tf.Summary.Value(tag='debug/DAGGER_train_walltime', simple_value=(end - data)),
+                                 tf.Summary.Value(tag='debug/DAGGER_complete_walltime', simple_value=(end - begin))])
 
     train_step_start = time.time()
 
-    random_rate = 0.9
+    np_global_step = sess.run(global_step)
+
+    random_rate = FLAGS.decay ** np_global_step
 
     env.reset()
     obs, info = env.observations()
@@ -66,9 +77,13 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
 
     # Dataset aggregation
     terminal = False
-    while not terminal:
+    while not terminal and len(info_history):
         _, previous_info = env.observations()
         previous_info = copy.deepcopy(previous_info)
+
+        summary_text = os.linesep.join('{}[{}]-{}'.format(key, idx, len(info_history))
+                                       for key in ('GOAL.LOC', 'SPAWN.LOC', 'POSE')
+                                       for idx, value in enumerate(previous_info[key]))
 
         feed_dict = prepare_feed_dict(net.input_tensors, {'sequence_length': np.array([1]),
                                                           'visual_input': np.array([[observation_history[-1]]]),
@@ -76,8 +91,9 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
                                                           'reward': np.array([[rewards_history[-1]]]),
                                                           'estimate_map_list': estimate_maps_history[-1],
                                                           'is_training': False})
+        feed_dict[step_history] = summary_text
 
-        results = sess.run([net.output_tensors['action']] +
+        results = sess.run([net.output_tensors['action'], step_history_op] +
                            net.intermediate_tensors['estimate_map_list'], feed_dict=feed_dict)
         predict_action = np.squeeze(results[0])
         optimal_action = exp.get_optimal_action(previous_info)
@@ -91,8 +107,10 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
         observation_history.append(obs)
         egomotion_history.append(environment.calculate_egomotion(previous_info['POSE'], info['POSE']))
         rewards_history.append(reward)
-        estimate_maps_history.append([tensor[:, 0, :, :, :] for tensor in results[1:]])
-        info_history.append(info)
+        estimate_maps_history.append([tensor[:, 0, :, :, :] for tensor in results[2:]])
+        info_history.append(copy.deepcopy(info))
+
+        summary_writer.add_summary(results[1], global_step=np_global_step)
 
     train_step_eval = time.time()
 
@@ -121,17 +139,18 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
         total_loss = sess.run(train_op, feed_dict=feed_dict)
         cumulative_loss += total_loss
 
+    cumulative_loss /= len(info_history)
+
     train_step_end = time.time()
 
-    np_global_step = sess.run(global_step)
-
-    observation_summaries = sess.run(_build_observation_summary(info_history))
-    for summary in observation_summaries:
-        summary_writer.add_summary(summary, global_step=np_global_step)
+    summary_writer.add_summary(_build_trajectory_summary(cumulative_loss, rewards_history, info_history, exp),
+                               global_step=np_global_step)
 
     if FLAGS.debug:
         summary_writer.add_summary(_build_walltime_summary(train_step_start, train_step_eval, train_step_end),
                                    global_step=np_global_step)
+
+    sess.run(update_global_step_op)
 
     return cumulative_loss, False
 
@@ -155,18 +174,29 @@ def prepare_feed_dict(tensors, data):
 
 
 def main(_):
+    tf.reset_default_graph()
+
     env = environment.get_game_environment(FLAGS.maps)
     exp = expert.Expert()
     net = CMAP(debug=FLAGS.debug)
 
     optimizer = tf.train.AdamOptimizer()
     train_op = slim.learning.create_train_op(net.output_tensors['loss'], optimizer)
-    tf.summary.scalar('losses/total_loss', net.output_tensors['loss'])
+
+    step_history = tf.placeholder(tf.string, name='step_history')
+    step_history_op = tf.summary.text('game/step_history', step_history, collections=['game'])
+
+    global_step = slim.get_or_create_global_step()
+    update_global_step_op = tf.assign_add(global_step, 1)
 
     slim.learning.train(train_op=train_op,
                         logdir=FLAGS.logdir,
+                        global_step=global_step,
                         train_step_fn=DAGGER_train_step,
-                        train_step_kwargs=dict(env=env, exp=exp, net=net),
+                        train_step_kwargs=dict(env=env, exp=exp, net=net,
+                                               update_global_step_op=update_global_step_op,
+                                               step_history=step_history,
+                                               step_history_op=step_history_op),
                         number_of_steps=FLAGS.num_games,
                         save_summaries_secs=300 if not FLAGS.debug else 30,
                         save_interval_secs=600 if not FLAGS.debug else 60)

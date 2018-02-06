@@ -36,11 +36,6 @@ class CMAP(object):
                 with slim.arg_scope([slim.conv2d, slim.conv2d_transpose], stride=1, padding='SAME'):
                     with tf.variable_scope("free_space_estimator", reuse=tf.AUTO_REUSE):
                         net = slim.conv2d(net, 64, [5, 5])
-
-                        if debug:
-                            tf.summary.scalar('gradients/mapper/first_convolution',
-                                              tf.reduce_mean(tf.gradients(net, image)))
-
                         net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
                         net = slim.conv2d(net, 128, [5, 5])
                         net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
@@ -158,10 +153,6 @@ class CMAP(object):
                     rewards_map = _fuse_belief(tf.concat([inputs, state], axis=3))
                     actions_map = slim.conv2d(rewards_map, num_actions, [3, 3])
                     values_map = tf.reduce_max(actions_map, axis=3, keep_dims=True)
-
-                    if debug:
-                        tf.summary.scalar('gradients/planner/VIN_first_convolution',
-                                          tf.reduce_mean(tf.gradients(actions_map, rewards_map)))
 
                 with tf.variable_scope("VIN", reuse=tf.AUTO_REUSE):
                     for i in xrange(num_iterations - 1):
