@@ -12,7 +12,7 @@ flags.DEFINE_string('maps', 'training-09x09-0127', 'Comma separated game environ
 flags.DEFINE_string('logdir', './output/dummy', 'Log directory')
 flags.DEFINE_boolean('debug', False, 'Save debugging information')
 flags.DEFINE_integer('num_games', 1000, 'Number of games to play')
-flags.DEFINE_integer('batch_size', 32, 'Number of environments to run')
+flags.DEFINE_integer('batch_size', 1, 'Number of environments to run')
 FLAGS = flags.FLAGS
 
 

@@ -49,7 +49,7 @@ class CMAP(object):
                         net = slim.fully_connected(net, 200)
                         net = slim.conv2d_transpose(net, 64, [24, 24], padding='VALID')
                         net = slim.conv2d_transpose(net, 32, [24, 24], padding='VALID')
-                        net = slim.conv2d_transpose(net, 2, [14, 14], padding='VALID')
+                        net = slim.conv2d_transpose(net, 2, [18, 18], padding='VALID')
 
                         beliefs.append(net)
                         for i in xrange(estimate_scale - 1):
@@ -183,7 +183,7 @@ class CMAP(object):
 
         return actions_logit
 
-    def __init__(self, image_size=(320, 320), estimate_size=64, estimate_scale=2,
+    def __init__(self, image_size=(80, 80), estimate_size=64, estimate_scale=2,
                  estimator=None, num_actions=4, num_iterations=3, debug=False):
         self._debug = debug
         self._image_size = image_size

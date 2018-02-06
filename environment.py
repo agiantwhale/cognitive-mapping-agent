@@ -24,7 +24,7 @@ def get_game_environment(mapname='training-09x09-0127', mode='training', multipr
 
     params = {
         'level_script': 'random_mazes',
-        'config': dict(width=320, height=320, fps=30
+        'config': dict(width=80, height=80, fps=30
                        , rows=9
                        , cols=9
                        , mode=mode
