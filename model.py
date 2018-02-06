@@ -117,7 +117,8 @@ class CMAP(object):
         interm_beliefs, final_belief = tf.nn.dynamic_rnn(bilinear_cell,
                                                          (normalized_input, egomotion, tf.expand_dims(reward, axis=2)),
                                                          sequence_length=sequence_length,
-                                                         initial_state=estimate_map)
+                                                         initial_state=estimate_map,
+                                                         swap_memory=True)
         m['estimate_map_list'] = interm_beliefs
         return final_belief
 
@@ -173,7 +174,8 @@ class CMAP(object):
         vin_cell = HierarchicalVINCell()
         interm_values_map, final_values_map = tf.nn.dynamic_rnn(vin_cell, tf.stack(scaled_beliefs, axis=1),
                                                                 initial_state=vin_cell.zero_state(batch_size,
-                                                                                                  tf.float32))
+                                                                                                  tf.float32),
+                                                                swap_memory=True)
         m['values_maps'] = interm_values_map
 
         values_features = slim.flatten(final_values_map)
