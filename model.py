@@ -12,6 +12,7 @@ class CMAP(object):
         return image
 
     def _build_mapper(self, m={}, estimator=None):
+        debug = self._debug
         is_training = self._is_training
         sequence_length = self._sequence_length
         visual_input = self._visual_input
@@ -35,6 +36,11 @@ class CMAP(object):
                 with slim.arg_scope([slim.conv2d, slim.conv2d_transpose], stride=1, padding='SAME'):
                     with tf.variable_scope("free_space_estimator", reuse=tf.AUTO_REUSE):
                         net = slim.conv2d(net, 64, [5, 5])
+
+                        if debug:
+                            tf.summary.scalar('gradients/mapper/first_convolution',
+                                              tf.reduce_mean(tf.gradients(net, image)))
+
                         net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
                         net = slim.conv2d(net, 128, [5, 5])
                         net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
@@ -116,6 +122,7 @@ class CMAP(object):
         return final_belief
 
     def _build_planner(self, scaled_beliefs, m={}):
+        debug = self._debug
         batch_size = tf.shape(scaled_beliefs[0])[0]
         image_scaler = self._upscale_image
         estimate_size = self._estimate_size
@@ -151,6 +158,10 @@ class CMAP(object):
                     actions_map = slim.conv2d(rewards_map, num_actions, [3, 3])
                     values_map = tf.reduce_max(actions_map, axis=3, keep_dims=True)
 
+                    if debug:
+                        tf.summary.scalar('gradients/planner/VIN_first_convolution',
+                                          tf.reduce_mean(tf.gradients(actions_map, rewards_map)))
+
                 with tf.variable_scope("VIN", reuse=tf.AUTO_REUSE):
                     for i in xrange(num_iterations - 1):
                         rv = tf.concat([rewards_map, values_map], axis=3)
@@ -171,7 +182,8 @@ class CMAP(object):
         return actions_logit
 
     def __init__(self, image_size=(320, 320), estimate_size=64, estimate_scale=2,
-                 estimator=None, num_actions=4, num_iterations=3):
+                 estimator=None, num_actions=4, num_iterations=3, debug=False):
+        self._debug = debug
         self._image_size = image_size
         self._estimate_size = estimate_size
         self._estimate_shape = (estimate_size, estimate_size, 3)

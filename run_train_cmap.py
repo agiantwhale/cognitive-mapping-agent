@@ -5,13 +5,14 @@ import environment
 import expert
 from model import CMAP
 import copy
+import time
 
 flags = tf.app.flags
 flags.DEFINE_string('maps', 'training-09x09-0127', 'Comma separated game environment list')
-flags.DEFINE_string('logdir', './output', 'Log directory')
+flags.DEFINE_string('logdir', './output/dummy', 'Log directory')
 flags.DEFINE_boolean('debug', False, 'Save debugging information')
-flags.DEFINE_integer('num_games', 1000, 'Number of games to play.')
-flags.DEFINE_integer('batch_size', 32, 'Number of environments to run.')
+flags.DEFINE_integer('num_games', 1000, 'Number of games to play')
+flags.DEFINE_integer('batch_size', 32, 'Number of environments to run')
 FLAGS = flags.FLAGS
 
 
@@ -19,6 +20,20 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
     env = train_step_kwargs['env']
     exp = train_step_kwargs['exp']
     net = train_step_kwargs['net']
+    summary_writer = train_step_kwargs['summary_writer']
+
+    def _build_observation_summary(info_history):
+        return tf.Summary(value=[tf.Summary.Value(tag='{}[{}]-{}'.format(key, idx, step), simple_value=value)
+                                 for key in ('GOAL.LOC', 'SPAWN.LOC', 'POSE')
+                                 for step, info in enumerate(info_history)
+                                 for idx, value in enumerate(info[key])])
+
+    def _build_walltime_summary(begin, data, end):
+        return tf.Summary(value=[tf.Summary.Value(tag='DAGGER_eval_walltime', simple_value=(data - begin)),
+                                 tf.Summary.Value(tag='DAGGER_train_walltime', simple_value=(end - data)),
+                                 tf.Summary.Value(tag='DAGGER_complete_walltime', simple_value=(end - begin))])
+
+    train_step_start = time.time()
 
     random_rate = 0.9
 
@@ -30,6 +45,7 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
     egomotion_history = [[0., 0.]]
     rewards_history = [0.]
     estimate_maps_history = [[np.zeros((1, 64, 64, 3))] * 2]
+    info_history = [info]
 
     # Dataset aggregation
     terminal = False
@@ -59,6 +75,9 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
         egomotion_history.append(environment.calculate_egomotion(previous_info['POSE'], info['POSE']))
         rewards_history.append(reward)
         estimate_maps_history.append([tensor[:, 0, :, :, :] for tensor in results[1:]])
+        info_history.append(info)
+
+    train_step_eval = time.time()
 
     assert len(optimal_action_history) == len(observation_history) == len(egomotion_history) == len(rewards_history)
 
@@ -86,6 +105,13 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
         total_loss, np_global_step = sess.run([train_op, global_step], feed_dict=feed_dict)
         cumulative_loss += total_loss
 
+    train_step_end = time.time()
+
+    summary_writer.add_summary(_build_observation_summary(info_history), global_step=np_global_step)
+    if FLAGS.debug:
+        summary_writer.add_summary(_build_walltime_summary(train_step_start, train_step_eval, train_step_end),
+                                   global_step=np_global_step)
+
     return cumulative_loss, False
 
 
@@ -110,7 +136,7 @@ def prepare_feed_dict(tensors, data):
 def main(_):
     env = environment.get_game_environment(FLAGS.maps)
     exp = expert.Expert()
-    net = CMAP()
+    net = CMAP(debug=FLAGS.debug)
 
     optimizer = tf.train.AdamOptimizer()
     train_op = slim.learning.create_train_op(net.output_tensors['loss'], optimizer)
