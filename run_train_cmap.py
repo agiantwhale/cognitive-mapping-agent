@@ -66,19 +66,21 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
     # We can just download more GPU ram from the internet, right?
     cumulative_loss = 0
     for i in xrange(0, len(optimal_action_history), FLAGS.batch_size):
-        batch_end_index = i + FLAGS.batch_size
+        batch_end_index = min(len(optimal_action_history), i + FLAGS.batch_size)
+        batch_size = batch_end_index - i
 
-        concat_observation_history = [observation_history[:batch_end_index]] * FLAGS.batch_size
-        concat_egomotion_history = [egomotion_history[:batch_end_index]] * FLAGS.batch_size
-        concat_reward_history = [rewards_history[:batch_end_index]] * FLAGS.batch_size
+        concat_observation_history = [observation_history[:batch_end_index]] * batch_size
+        concat_egomotion_history = [egomotion_history[:batch_end_index]] * batch_size
+        concat_reward_history = [rewards_history[:batch_end_index]] * batch_size
         concat_optimal_action_history = optimal_action_history[i:batch_end_index]
+        concat_estimate_map_list = [estimate_maps_history[0]] * batch_size
 
-        feed_dict = prepare_feed_dict(net.input_tensors, {'sequence_length': np.arange(1, batch_end_index - 1),
+        feed_dict = prepare_feed_dict(net.input_tensors, {'sequence_length': np.arange(1, batch_end_index),
                                                           'visual_input': np.array(concat_observation_history),
                                                           'egomotion': np.array(concat_egomotion_history),
                                                           'reward': np.array(concat_reward_history),
                                                           'optimal_action': np.array(concat_optimal_action_history),
-                                                          'estimate_map_list': estimate_maps_history[0],
+                                                          'estimate_map_list': np.array(concat_estimate_map_list),
                                                           'is_training': True})
 
         total_loss, np_global_step = sess.run([train_op, global_step], feed_dict=feed_dict)
