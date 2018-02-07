@@ -32,23 +32,25 @@ class CMAP(object):
 
             with slim.arg_scope([slim.conv2d, slim.fully_connected],
                                 activation_fn=tf.nn.relu,
-                                weights_initializer=tf.truncated_normal_initializer(stddev=0.0003)):
-                with slim.arg_scope([slim.conv2d, slim.conv2d_transpose], stride=1, padding='SAME'):
-                    with tf.variable_scope("free_space_estimator", reuse=tf.AUTO_REUSE):
-                        net = slim.conv2d(net, 64, [5, 5])
-                        net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
-                        net = slim.conv2d(net, 128, [5, 5])
-                        net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
-                        net = slim.conv2d(net, 256, [5, 5])
-                        net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
-                        net = slim.fully_connected(net, 200)
-                        net = slim.conv2d_transpose(net, 64, [24, 24], padding='VALID')
-                        net = slim.conv2d_transpose(net, 32, [24, 24], padding='VALID')
-                        net = slim.conv2d_transpose(net, 2, [18, 18], padding='VALID')
+                                weights_initializer=tf.truncated_normal_initializer(stddev=0.0003),
+                                reuse=tf.AUTO_REUSE):
+                with slim.arg_scope([slim.conv2d, slim.conv2d_transpose],
+                                    stride=1, padding='SAME', reuse=tf.AUTO_REUSE):
+                    net = slim.conv2d(net, 64, [5, 5], scope='conv_1')
+                    net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
+                    net = slim.conv2d(net, 128, [5, 5], scope='conv_2')
+                    net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
+                    net = slim.conv2d(net, 256, [5, 5], scope='conv_3')
+                    net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
+                    net = slim.fully_connected(net, 200, scope='fc_1')
+                    net = slim.conv2d_transpose(net, 64, [24, 24], padding='VALID', scope='conv_t_1')
+                    net = slim.conv2d_transpose(net, 32, [24, 24], padding='VALID', scope='conv_t_2')
+                    net = slim.conv2d_transpose(net, 2, [18, 18], padding='VALID', scope='conv_t_3')
 
-                        beliefs.append(net)
-                        for i in xrange(estimate_scale - 1):
-                            beliefs.append(self._upscale_image(slim.conv2d_transpose(net, 2, [6, 6])))
+                    beliefs.append(net)
+                    for i in xrange(estimate_scale - 1):
+                        beliefs.append(self._upscale_image(slim.conv2d_transpose(net, 2, [6, 6],
+                                                                                 scope='conv_upscale_{}'.format(i))))
 
             return [_constrain_confidence(belief) for belief in beliefs]
 
@@ -131,11 +133,10 @@ class CMAP(object):
             with slim.arg_scope([slim.conv2d],
                                 activation_fn=tf.nn.relu,
                                 weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
-                                stride=1, padding='SAME'):
-                with tf.variable_scope("fuser", reuse=tf.AUTO_REUSE):
-                    net = slim.repeat(belief, 3, slim.conv2d, 6, [1, 1])
-                    net = slim.conv2d(net, 1, [1, 1])
-                    return net
+                                stride=1, padding='SAME', reuse=tf.AUTO_REUSE):
+                net = slim.repeat(belief, 3, slim.conv2d, 6, [1, 1], scope='fuser')
+                net = slim.conv2d(net, 1, [1, 1], scope='fuser_combine')
+                return net
 
         class HierarchicalVINCell(tf.nn.rnn_cell.RNNCell):
             @property
@@ -150,15 +151,19 @@ class CMAP(object):
                 # Upscale previous value map
                 state = image_scaler(state)
 
-                with tf.variable_scope("VIN_prior", reuse=tf.AUTO_REUSE):
+                with slim.arg_scope([slim.conv2d], reuse=tf.AUTO_REUSE):
                     rewards_map = _fuse_belief(tf.concat([inputs, state], axis=3))
-                    actions_map = slim.conv2d(rewards_map, num_actions, [3, 3])
+                    actions_map = slim.conv2d(rewards_map, num_actions, [3, 3],
+                                              weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                              scope='VIN_actions_initial')
                     values_map = tf.reduce_max(actions_map, axis=3, keep_dims=True)
 
-                with tf.variable_scope("VIN", reuse=tf.AUTO_REUSE):
+                with slim.arg_scope([slim.conv2d], reuse=tf.AUTO_REUSE):
                     for i in xrange(num_iterations - 1):
                         rv = tf.concat([rewards_map, values_map], axis=3)
-                        actions_map = slim.conv2d(rv, num_actions, [3, 3])
+                        actions_map = slim.conv2d(rv, num_actions, [3, 3],
+                                                  weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                                  scope='VIN_actions')
                         values_map = tf.reduce_max(actions_map, axis=3, keep_dims=True)
 
                 return values_map, values_map
@@ -177,7 +182,7 @@ class CMAP(object):
         return actions_logit
 
     def __init__(self, image_size=(84, 84), estimate_size=64, estimate_scale=2,
-                 estimator=None, num_actions=4, num_iterations=16, debug=False):
+                 estimator=None, num_actions=4, num_iterations=12, debug=False):
         self._debug = debug
         self._image_size = image_size
         self._estimate_size = estimate_size
@@ -185,9 +190,9 @@ class CMAP(object):
         self._estimate_scale = estimate_scale
         self._num_actions = num_actions
         self._num_iterations = num_iterations
-        self._is_training = tf.placeholder(tf.bool)
+        self._is_training = tf.placeholder(tf.bool, name='is_training')
 
-        self._sequence_length = tf.placeholder(tf.int32, [None], name='visual_input')
+        self._sequence_length = tf.placeholder(tf.int32, [None], name='sequence_length')
         self._visual_input = tf.placeholder(tf.float32, [None, None] + list(self._image_size) + [3],
                                             name='visual_input')
         self._egomotion = tf.placeholder(tf.float32, (None, None, 2), name='egomotion')

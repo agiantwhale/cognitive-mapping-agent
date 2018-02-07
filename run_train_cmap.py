@@ -85,19 +85,14 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
         _, previous_info = env.observations()
         previous_info = copy.deepcopy(previous_info)
 
-        summary_text = os.linesep.join('{}[{}]-{}'.format(key, idx, len(info_history))
-                                       for key in ('GOAL.LOC', 'SPAWN.LOC', 'POSE')
-                                       for idx, value in enumerate(previous_info[key]))
-
         feed_dict = prepare_feed_dict(net.input_tensors, {'sequence_length': np.array([1]),
                                                           'visual_input': np.array([[observation_history[-1]]]),
                                                           'egomotion': np.array([[egomotion_history[-1]]]),
                                                           'reward': np.array([[rewards_history[-1]]]),
                                                           'estimate_map_list': estimate_maps_history[-1],
                                                           'is_training': False})
-        feed_dict[step_history] = summary_text
 
-        results = sess.run([net.output_tensors['action'], step_history_op] +
+        results = sess.run([net.output_tensors['action']] +
                            net.intermediate_tensors['estimate_map_list'], feed_dict=feed_dict)
         predict_action = np.squeeze(results[0])
         optimal_action = exp.get_optimal_action(previous_info)
@@ -107,11 +102,11 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
         action = np.argmax(dagger_action)
         obs, reward, terminal, info = env.step(action)
 
-        optimal_action_history.append(optimal_action)
-        observation_history.append(obs)
+        optimal_action_history.append(copy.deepcopy(optimal_action))
+        observation_history.append(copy.deepcopy(obs))
         egomotion_history.append(environment.calculate_egomotion(previous_info['POSE'], info['POSE']))
-        rewards_history.append(reward)
-        estimate_maps_history.append([tensor[:, 0, :, :, :] for tensor in results[2:]])
+        rewards_history.append(copy.deepcopy(reward))
+        estimate_maps_history.append([tensor[:, 0, :, :, :] for tensor in results[1:]])
         info_history.append(copy.deepcopy(info))
 
         summary_writer.add_summary(results[1], global_step=np_global_step)
@@ -140,14 +135,21 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
                                                           'estimate_map_list': concat_estimate_map_list,
                                                           'is_training': True})
 
-        total_loss = sess.run(train_op, feed_dict=feed_dict)
-        cumulative_loss += total_loss
+        loss = sess.run(train_op, feed_dict=feed_dict)
+        cumulative_loss += loss
 
     train_step_end = time.time()
 
-    summary_writer.add_summary(
-        _build_trajectory_summary(random_rate, cumulative_loss, rewards_history, info_history, exp),
-        global_step=np_global_step)
+    summary_text = os.linesep.join('{}[{}]-{}'.format(key, idx, step)
+                                   for step, info in enumerate(info_history)
+                                   for key in ('GOAL.LOC', 'SPAWN.LOC', 'POSE')
+                                   for idx, value in enumerate(info[key]))
+    step_history_summary = sess.run(step_history_op, feed_dict={step_history: summary_text})
+    summary_writer.add_summary(step_history_summary, global_step=global_step)
+
+    summary_writer.add_summary(_build_trajectory_summary(random_rate, cumulative_loss,
+                                                         rewards_history, info_history, exp),
+                               global_step=np_global_step)
     summary_writer.add_summary(_build_walltime_summary(train_step_start, train_step_eval, train_step_end),
                                global_step=np_global_step)
 
@@ -182,16 +184,17 @@ def main(_):
                                            random_goal=FLAGS.random_goal,
                                            random_spawn=FLAGS.random_spawn)
     exp = expert.Expert()
-    net = CMAP(debug=FLAGS.debug)
-
-    optimizer = tf.train.AdamOptimizer(learning_rate=1.)
-    train_op = slim.learning.create_train_op(net.output_tensors['loss'], optimizer)
+    net = CMAP()
 
     step_history = tf.placeholder(tf.string, name='step_history')
     step_history_op = tf.summary.text('game/step_history', step_history, collections=['game'])
 
     global_step = slim.get_or_create_global_step()
     update_global_step_op = tf.assign_add(global_step, 1)
+
+    optimizer = tf.train.AdamOptimizer(learning_rate=100)
+    train_op = slim.learning.create_train_op(net.output_tensors['loss'], optimizer,
+                                             global_step=global_step, summarize_gradients=FLAGS.debug)
 
     slim.learning.train(train_op=train_op,
                         logdir=FLAGS.logdir,
