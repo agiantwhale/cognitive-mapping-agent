@@ -109,8 +109,6 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
         estimate_maps_history.append([tensor[:, 0, :, :, :] for tensor in results[1:]])
         info_history.append(copy.deepcopy(info))
 
-        summary_writer.add_summary(results[1], global_step=np_global_step)
-
     train_step_eval = time.time()
 
     assert len(optimal_action_history) == len(observation_history) == len(egomotion_history) == len(rewards_history)
