@@ -163,7 +163,7 @@ class CMAP(object):
 
                 return values_map, values_map
 
-        beliefs = tf.stack([slim.batch_norm(belief, is_training=is_training) for belief in scaled_beliefs], axis=1)
+        beliefs = tf.stack(scaled_beliefs, axis=1)
         vin_cell = HierarchicalVINCell()
         interm_values_map, final_values_map = tf.nn.dynamic_rnn(vin_cell, beliefs,
                                                                 initial_state=vin_cell.zero_state(batch_size,
