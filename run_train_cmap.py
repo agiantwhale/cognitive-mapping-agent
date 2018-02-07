@@ -14,7 +14,7 @@ flags.DEFINE_string('maps', 'training-09x09-0127', 'Comma separated game environ
 flags.DEFINE_string('logdir', './output/dummy', 'Log directory')
 flags.DEFINE_boolean('debug', False, 'Save debugging information')
 flags.DEFINE_boolean('multiproc', False, 'Multiproc environment')
-flags.DEFINE_integer('num_games', 1000, 'Number of games to play')
+flags.DEFINE_integer('num_games', 10 ** 8, 'Number of games to play')
 flags.DEFINE_integer('batch_size', 1, 'Number of environments to run')
 flags.DEFINE_float('decay', 0.999, 'DAGGER decay')
 FLAGS = flags.FLAGS
@@ -149,12 +149,7 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
     summary_writer.add_summary(_build_walltime_summary(train_step_start, train_step_eval, train_step_end),
                                global_step=np_global_step)
 
-    sess.run(update_global_step_op)
-
-    if 'should_stop' in train_step_kwargs:
-        should_stop = sess.run(train_step_kwargs['should_stop'])
-    else:
-        should_stop = False
+    should_stop = sess.run(update_global_step_op) >= FLAGS.num_games
 
     return cumulative_loss, should_stop
 
