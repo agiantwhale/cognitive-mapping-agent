@@ -184,7 +184,7 @@ def main(_):
     exp = expert.Expert()
     net = CMAP(debug=FLAGS.debug)
 
-    optimizer = tf.train.AdamOptimizer()
+    optimizer = tf.train.AdamOptimizer(learning_rate=1.)
     train_op = slim.learning.create_train_op(net.output_tensors['loss'], optimizer)
 
     step_history = tf.placeholder(tf.string, name='step_history')
