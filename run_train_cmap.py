@@ -16,6 +16,7 @@ flags.DEFINE_boolean('debug', False, 'Save debugging information')
 flags.DEFINE_boolean('multiproc', False, 'Multiproc environment')
 flags.DEFINE_boolean('random_goal', True, 'Allow random goal')
 flags.DEFINE_boolean('random_spawn', True, 'Allow random spawn')
+flags.DEFINE_integer('max_steps_per_episode', 10 ** 100, 'Max steps per episode')
 flags.DEFINE_integer('num_games', 10 ** 8, 'Number of games to play')
 flags.DEFINE_integer('batch_size', 1, 'Number of environments to run')
 flags.DEFINE_float('decay', 0.999, 'DAGGER decay')
@@ -81,7 +82,7 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
 
     # Dataset aggregation
     terminal = False
-    while not terminal and len(info_history):
+    while not terminal and len(info_history) < FLAGS.max_steps_per_episode:
         _, previous_info = env.observations()
         previous_info = copy.deepcopy(previous_info)
 
