@@ -38,7 +38,7 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
 
         def _node_to_game_coordinate(node):
             row, col = node
-            return 14 + int((col + 0.5) * 100), 14 + int((row + 0.5) * 100)
+            return 14 + int((col - 0.5) * 100), 14 + int((row - 0.5) * 100)
 
         def _pose_to_game_coordinate(pose):
             x, y = pose[:2]
