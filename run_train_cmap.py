@@ -14,6 +14,8 @@ flags.DEFINE_string('maps', 'training-09x09-0127', 'Comma separated game environ
 flags.DEFINE_string('logdir', './output/dummy', 'Log directory')
 flags.DEFINE_boolean('debug', False, 'Save debugging information')
 flags.DEFINE_boolean('multiproc', False, 'Multiproc environment')
+flags.DEFINE_boolean('random_goal', True, 'Allow random goal')
+flags.DEFINE_boolean('random_spawn', True, 'Allow random spawn')
 flags.DEFINE_integer('num_games', 10 ** 8, 'Number of games to play')
 flags.DEFINE_integer('batch_size', 1, 'Number of environments to run')
 flags.DEFINE_float('decay', 0.999, 'DAGGER decay')
@@ -175,7 +177,10 @@ def prepare_feed_dict(tensors, data):
 def main(_):
     tf.reset_default_graph()
 
-    env = environment.get_game_environment(FLAGS.maps, multiproc=FLAGS.multiproc)
+    env = environment.get_game_environment(FLAGS.maps,
+                                           multiproc=FLAGS.multiproc,
+                                           random_goal=FLAGS.random_goal,
+                                           random_spawn=FLAGS.random_spawn)
     exp = expert.Expert()
     net = CMAP(debug=FLAGS.debug)
 

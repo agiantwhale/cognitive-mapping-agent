@@ -19,7 +19,8 @@ def get_entity_layer_path(entity_layer_name):
     return path
 
 
-def get_game_environment(mapname='training-09x09-0127', mode='training', multiproc=False):
+def get_game_environment(mapname='training-09x09-0127', mode='training', multiproc=False,
+                         random_spawn=True, random_goal=True):
     mapstrings = ','.join(open(get_entity_layer_path(m)).read() for m in mapname.split(','))
 
     params = {
@@ -31,6 +32,8 @@ def get_game_environment(mapname='training-09x09-0127', mode='training', multipr
                        , num_maps=1
                        , withvariations=True
                        , random_spawn_random_goal='True'
+                       , goal_characters='G' if not random_goal else 'GAP'
+                       , spawn_characters='P' if not random_spawn else 'GAP'
                        , chosen_map=mapname
                        , mapnames=mapname
                        , mapstrings=mapstrings
