@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 from tensorflow.contrib import slim
 
@@ -23,6 +24,10 @@ class CMAP(object):
         estimate_shape = self._estimate_shape
 
         def _estimate(image):
+            def _xavier_init(num_in, num_out):
+                stddev = np.sqrt(4. / (num_in + num_out))
+                return tf.truncated_normal_initializer(stddev=stddev)
+
             def _constrain_confidence(belief):
                 estimate, confidence = tf.unstack(belief, axis=3)
                 return tf.stack([estimate, tf.nn.sigmoid(confidence)], axis=3)
@@ -31,26 +36,40 @@ class CMAP(object):
             net = image
 
             with slim.arg_scope([slim.conv2d, slim.fully_connected, slim.conv2d_transpose],
-                                activation_fn=tf.nn.relu,
-                                weights_initializer=tf.truncated_normal_initializer(stddev=0.012),
+                                activation_fn=tf.nn.elu,
+                                biases_initializer=tf.constant_initializer(0),
                                 reuse=tf.AUTO_REUSE):
-                with slim.arg_scope([slim.conv2d, slim.conv2d_transpose],
-                                    stride=1, padding='SAME', reuse=tf.AUTO_REUSE):
-                    net = slim.conv2d(net, 64, [5, 5], scope='conv_1')
-                    net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
-                    net = slim.conv2d(net, 128, [5, 5], scope='conv_2')
-                    net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
-                    net = slim.conv2d(net, 256, [5, 5], scope='conv_3')
-                    net = slim.max_pool2d(net, stride=4, kernel_size=[4, 4])
-                    net = slim.fully_connected(net, 200, scope='fc_1')
-                    net = slim.conv2d_transpose(net, 64, [24, 24], padding='VALID', scope='conv_t_1')
-                    net = slim.conv2d_transpose(net, 32, [24, 24], padding='VALID', scope='conv_t_2')
-                    net = slim.conv2d_transpose(net, 2, [18, 18], padding='VALID', scope='conv_t_3')
+                last_output_channels = 3
+
+                with slim.arg_scope([slim.conv2d],
+                                    stride=1, padding='VALID'):
+                    for index, output in enumerate([(32, [7, 7]), (48, [7, 7]),
+                                                    (64, [5, 5]), (64, [5, 5])]):
+                        channels, filter_size = output
+                        net = slim.conv2d(net, channels, filter_size, scope='mapper_conv_{}'.format(index),
+                                          weights_initializer=_xavier_init(np.prod(filter_size) * last_output_channels,
+                                                                           channels))
+                        last_output_channels = channels
+
+                    net = slim.fully_connected(net, 200, scope='mapper_fc',
+                                               weights_initializer=_xavier_init(last_output_channels, 200))
+                    last_output_channels = 200
+
+                with slim.arg_scope([slim.conv2d_transpose],
+                                    stride=1, padding='SAME'):
+                    for index, output in enumerate((64, 32, 2)):
+                        net = slim.conv2d_transpose(net, output, [7, 7], scope='mapper_deconv_{}'.format(index),
+                                                    weights_initializer=_xavier_init(7 * 7 * last_output_channels,
+                                                                                     output))
+                        last_output_channels = output
 
                     beliefs.append(net)
                     for i in xrange(estimate_scale - 1):
-                        beliefs.append(self._upscale_image(slim.conv2d_transpose(net, 2, [6, 6],
-                                                                                 scope='conv_upscale_{}'.format(i))))
+                        net = slim.conv2d_transpose(net, 2, [6, 6],
+                                                    weights_initializer=_xavier_init(6 * 6 * last_output_channels, 2),
+                                                    scope='mapper_upscale_{}'.format(i))
+                        last_output_channels = 2
+                        beliefs.append(self._upscale_image(net))
 
             return [_constrain_confidence(belief) for belief in beliefs]
 
@@ -131,8 +150,9 @@ class CMAP(object):
 
         def _fuse_belief(belief):
             with slim.arg_scope([slim.conv2d],
-                                activation_fn=tf.nn.relu,
-                                weights_initializer=tf.truncated_normal_initializer(stddev=0.016),
+                                activation_fn=tf.nn.elu,
+                                weights_initializer=tf.truncated_normal_initializer(stddev=0.63),
+                                biases_initializer=tf.constant_initializer(0),
                                 stride=1, padding='SAME', reuse=tf.AUTO_REUSE):
                 net = slim.repeat(belief, 3, slim.conv2d, 6, [1, 1], scope='fuser')
                 net = slim.conv2d(net, 1, [1, 1], scope='fuser_combine')
@@ -154,7 +174,8 @@ class CMAP(object):
                 with slim.arg_scope([slim.conv2d], reuse=tf.AUTO_REUSE):
                     rewards_map = _fuse_belief(tf.concat([inputs, state], axis=3))
                     actions_map = slim.conv2d(rewards_map, num_actions, [3, 3],
-                                              weights_initializer=tf.truncated_normal_initializer(stddev=0.016),
+                                              weights_initializer=tf.truncated_normal_initializer(stddev=0.42),
+                                              biases_initializer=tf.constant_initializer(0),
                                               scope='VIN_actions_initial')
                     values_map = tf.reduce_max(actions_map, axis=3, keep_dims=True)
 
@@ -162,7 +183,8 @@ class CMAP(object):
                     for i in xrange(num_iterations - 1):
                         rv = tf.concat([rewards_map, values_map], axis=3)
                         actions_map = slim.conv2d(rv, num_actions, [3, 3],
-                                                  weights_initializer=tf.truncated_normal_initializer(stddev=0.016),
+                                                  weights_initializer=tf.truncated_normal_initializer(stddev=0.42),
+                                                  biases_initializer=tf.constant_initializer(0),
                                                   scope='VIN_actions')
                         values_map = tf.reduce_max(actions_map, axis=3, keep_dims=True)
 
@@ -178,11 +200,13 @@ class CMAP(object):
 
         values_features = slim.flatten(final_values_map)
         actions_logit = slim.fully_connected(values_features, num_actions ** 2,
-                                             weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
-                                             activation_fn=tf.nn.relu,
+                                             weights_initializer=tf.truncated_normal_initializer(stddev=0.03),
+                                             biases_initializer=tf.constant_initializer(0),
+                                             activation_fn=tf.nn.elu,
                                              scope='logit_output_1')
         actions_logit = slim.fully_connected(actions_logit, num_actions,
                                              weights_initializer=tf.truncated_normal_initializer(stddev=0.5),
+                                             biases_initializer=tf.constant_initializer(1.0 / num_actions),
                                              scope='logit_output_2')
 
         return actions_logit
