@@ -30,7 +30,7 @@ class CMAP(object):
             beliefs = []
             net = image
 
-            with slim.arg_scope([slim.conv2d, slim.fully_connected],
+            with slim.arg_scope([slim.conv2d, slim.fully_connected, slim.conv2d_transpose],
                                 activation_fn=tf.nn.relu,
                                 weights_initializer=tf.truncated_normal_initializer(stddev=0.0003),
                                 reuse=tf.AUTO_REUSE):
