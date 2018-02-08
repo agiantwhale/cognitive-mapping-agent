@@ -143,7 +143,8 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
                             for step, info in enumerate(info_history)
                             for key in ('GOAL.LOC', 'SPAWN.LOC', 'POSE')
                             for idx, value in enumerate(info[key]))
-    step_history_summary = sess.run(step_history_op, feed_dict={step_history: summary_text})
+    step_history_summary, new_global_step = sess.run([step_history_op, update_global_step_op],
+                                                     feed_dict={step_history: summary_text})
     summary_writer.add_summary(step_history_summary, global_step=np_global_step)
 
     summary_writer.add_summary(_build_trajectory_summary(random_rate, cumulative_loss,
@@ -152,7 +153,7 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
     summary_writer.add_summary(_build_walltime_summary(train_step_start, train_step_eval, train_step_end),
                                global_step=np_global_step)
 
-    should_stop = sess.run(update_global_step_op) >= FLAGS.num_games
+    should_stop = new_global_step >= FLAGS.num_games
 
     return cumulative_loss, should_stop
 
