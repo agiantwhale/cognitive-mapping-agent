@@ -223,7 +223,9 @@ def main(_):
                                                step_history_op=step_history_op,
                                                gradient_names=gradient_names,
                                                gradient_summary_op=gradient_summary_op),
-                        number_of_steps=FLAGS.num_games)
+                        number_of_steps=FLAGS.num_games,
+                        save_interval_secs=300,
+                        save_summaries_secs=300)
 
 
 if __name__ == '__main__':
