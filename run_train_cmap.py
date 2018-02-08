@@ -28,10 +28,9 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
     exp = train_step_kwargs['exp']
     net = train_step_kwargs['net']
     summary_writer = train_step_kwargs['summary_writer']
-
     step_history = train_step_kwargs['step_history']
     step_history_op = train_step_kwargs['step_history_op']
-
+    gradient_summary_op = train_step_kwargs['gradient_summary_op']
     update_global_step_op = train_step_kwargs['update_global_step_op']
 
     def _build_trajectory_summary(rate, loss, rewards_history, info_history, exp):
@@ -134,8 +133,14 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
                                                           'estimate_map_list': concat_estimate_map_list,
                                                           'is_training': True})
 
-        loss = sess.run(train_op, feed_dict=feed_dict)
-        cumulative_loss += loss
+        train_ops = [train_op, gradient_summary_op] if FLAGS.debug else [train_op]
+
+        results = sess.run(train_ops, feed_dict=feed_dict)
+        cumulative_loss += results[0]
+
+        if FLAGS.debug:
+            for summary in results[1:]:
+                summary_writer.add_summary(summary, global_step=np_global_step)
 
     train_step_end = time.time()
 
@@ -192,9 +197,10 @@ def main(_):
     global_step = slim.get_or_create_global_step()
     update_global_step_op = tf.assign_add(global_step, 1)
 
-    optimizer = tf.train.AdamOptimizer(learning_rate=100)
+    optimizer = tf.train.AdamOptimizer()
     train_op = slim.learning.create_train_op(net.output_tensors['loss'], optimizer,
                                              global_step=global_step, summarize_gradients=FLAGS.debug)
+    gradient_summary_op = tf.summary.merge_all()
 
     slim.learning.train(train_op=train_op,
                         logdir=FLAGS.logdir,
@@ -203,10 +209,9 @@ def main(_):
                         train_step_kwargs=dict(env=env, exp=exp, net=net,
                                                update_global_step_op=update_global_step_op,
                                                step_history=step_history,
-                                               step_history_op=step_history_op),
-                        number_of_steps=FLAGS.num_games,
-                        save_summaries_secs=300 if not FLAGS.debug else 30,
-                        save_interval_secs=600 if not FLAGS.debug else 60)
+                                               step_history_op=step_history_op,
+                                               gradient_summary_op=gradient_summary_op),
+                        number_of_steps=FLAGS.num_games)
 
 
 if __name__ == '__main__':
