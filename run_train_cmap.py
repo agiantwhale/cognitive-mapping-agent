@@ -30,6 +30,7 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
     summary_writer = train_step_kwargs['summary_writer']
     step_history = train_step_kwargs['step_history']
     step_history_op = train_step_kwargs['step_history_op']
+    gradient_names = train_step_kwargs['gradient_names']
     gradient_summary_op = train_step_kwargs['gradient_summary_op']
     update_global_step_op = train_step_kwargs['update_global_step_op']
 
@@ -62,6 +63,11 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
         return tf.Summary(value=[tf.Summary.Value(tag='time/DAGGER_eval_walltime', simple_value=(data - begin)),
                                  tf.Summary.Value(tag='time/DAGGER_train_walltime', simple_value=(end - data)),
                                  tf.Summary.Value(tag='time/DAGGER_complete_walltime', simple_value=(end - begin))])
+
+    def _build_gradient_summary(gradient_names, gradient_collections):
+        gradient_means = np.array(gradient_collections).mean(axis=1).tolist()
+        return tf.Summary(value=[tf.Summary.Value(tag='debug/gradient/{}'.format(var), simple_value=val)
+                                 for var, val in zip(gradient_names, gradient_means)])
 
     train_step_start = time.time()
 
@@ -114,6 +120,7 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
     assert len(optimal_action_history) == len(observation_history) == len(egomotion_history) == len(rewards_history)
 
     # Training
+    gradient_collections = []
     cumulative_loss = 0
     for i in xrange(0, len(optimal_action_history), FLAGS.batch_size):
         batch_end_index = min(len(optimal_action_history), i + FLAGS.batch_size)
@@ -133,14 +140,13 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
                                                           'estimate_map_list': concat_estimate_map_list,
                                                           'is_training': True})
 
-        train_ops = [train_op, gradient_summary_op] if FLAGS.debug else [train_op]
+        train_ops = [train_op] + gradient_summary_op if FLAGS.debug else [train_op]
 
         results = sess.run(train_ops, feed_dict=feed_dict)
         cumulative_loss += results[0]
 
         if FLAGS.debug:
-            for summary in results[1:]:
-                summary_writer.add_summary(summary, global_step=np_global_step)
+            gradient_collections.append(results[1:])
 
     train_step_end = time.time()
 
@@ -152,6 +158,9 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
                                                      feed_dict={step_history: summary_text})
     summary_writer.add_summary(step_history_summary, global_step=np_global_step)
 
+    if FLAGS.debug:
+        summary_writer.add_summary(_build_gradient_summary(gradient_names, gradient_collections),
+                                   global_step=np_global_step)
     summary_writer.add_summary(_build_trajectory_summary(random_rate, cumulative_loss,
                                                          rewards_history, info_history, exp),
                                global_step=np_global_step)
@@ -199,8 +208,10 @@ def main(_):
 
     optimizer = tf.train.AdamOptimizer()
     train_op = slim.learning.create_train_op(net.output_tensors['loss'], optimizer,
-                                             global_step=global_step, summarize_gradients=FLAGS.debug)
-    gradient_summary_op = tf.summary.merge_all()
+                                             global_step=global_step)
+    gradients = optimizer.compute_gradients(net.output_tensors['loss'])
+    gradient_names = [v.name for _, v in gradients]
+    gradient_summary_op = [tf.reduce_mean(tf.abs(g)) for g, _ in gradients]
 
     slim.learning.train(train_op=train_op,
                         logdir=FLAGS.logdir,
@@ -210,6 +221,7 @@ def main(_):
                                                update_global_step_op=update_global_step_op,
                                                step_history=step_history,
                                                step_history_op=step_history_op,
+                                               gradient_names=gradient_names,
                                                gradient_summary_op=gradient_summary_op),
                         number_of_steps=FLAGS.num_games)
 
