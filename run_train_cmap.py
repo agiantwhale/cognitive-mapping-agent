@@ -67,7 +67,7 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
 
     def _build_gradient_summary(gradient_names, gradient_collections):
         gradient_means = np.array(gradient_collections).mean(axis=1).tolist()
-        return tf.Summary(value=[tf.Summary.Value(tag='debug/gradient/{}'.format(var), simple_value=val)
+        return tf.Summary(value=[tf.Summary.Value(tag='gradient/{}'.format(var), simple_value=val)
                                  for var, val in zip(gradient_names, gradient_means)])
 
     train_step_start = time.time()
@@ -141,13 +141,11 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
                                                           'estimate_map_list': concat_estimate_map_list,
                                                           'is_training': True})
 
-        train_ops = [train_op] + gradient_summary_op if FLAGS.debug else [train_op]
+        train_ops = [net.output_tensors['loss'], train_op] + gradient_summary_op
 
         results = sess.run(train_ops, feed_dict=feed_dict)
         cumulative_loss += results[0]
-
-        if FLAGS.debug:
-            gradient_collections.append(results[1:])
+        gradient_collections.append(results[2:])
 
     train_step_end = time.time()
 
@@ -159,9 +157,8 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
                                                      feed_dict={step_history: summary_text})
     summary_writer.add_summary(step_history_summary, global_step=np_global_step)
 
-    if FLAGS.debug:
-        summary_writer.add_summary(_build_gradient_summary(gradient_names, gradient_collections),
-                                   global_step=np_global_step)
+    summary_writer.add_summary(_build_gradient_summary(gradient_names, gradient_collections),
+                               global_step=np_global_step)
     summary_writer.add_summary(_build_trajectory_summary(random_rate, cumulative_loss,
                                                          rewards_history, info_history, exp),
                                global_step=np_global_step)
@@ -208,11 +205,10 @@ def main(_):
     update_global_step_op = tf.assign_add(global_step, 1)
 
     optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
-    train_op = slim.learning.create_train_op(net.output_tensors['loss'], optimizer,
-                                             global_step=global_step)
     gradients = optimizer.compute_gradients(net.output_tensors['loss'])
     gradient_names = [v.name for _, v in gradients]
     gradient_summary_op = [tf.reduce_mean(tf.abs(g)) for g, _ in gradients]
+    train_op = optimizer.apply_gradients(gradients)
 
     slim.learning.train(train_op=train_op,
                         logdir=FLAGS.logdir,
