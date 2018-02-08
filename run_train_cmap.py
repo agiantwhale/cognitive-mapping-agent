@@ -206,7 +206,7 @@ def main(_):
     global_step = slim.get_or_create_global_step()
     update_global_step_op = tf.assign_add(global_step, 1)
 
-    optimizer = tf.train.AdamOptimizer()
+    optimizer = tf.train.AdamOptimizer(learning_rate=1.)
     train_op = slim.learning.create_train_op(net.output_tensors['loss'], optimizer,
                                              global_step=global_step)
     gradients = optimizer.compute_gradients(net.output_tensors['loss'])
