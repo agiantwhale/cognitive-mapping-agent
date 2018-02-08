@@ -32,7 +32,7 @@ class CMAP(object):
 
             with slim.arg_scope([slim.conv2d, slim.fully_connected, slim.conv2d_transpose],
                                 activation_fn=tf.nn.relu,
-                                weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                weights_initializer=tf.truncated_normal_initializer(stddev=0.012),
                                 reuse=tf.AUTO_REUSE):
                 with slim.arg_scope([slim.conv2d, slim.conv2d_transpose],
                                     stride=1, padding='SAME', reuse=tf.AUTO_REUSE):
@@ -132,7 +132,7 @@ class CMAP(object):
         def _fuse_belief(belief):
             with slim.arg_scope([slim.conv2d],
                                 activation_fn=tf.nn.relu,
-                                weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                weights_initializer=tf.truncated_normal_initializer(stddev=0.016),
                                 stride=1, padding='SAME', reuse=tf.AUTO_REUSE):
                 net = slim.repeat(belief, 3, slim.conv2d, 6, [1, 1], scope='fuser')
                 net = slim.conv2d(net, 1, [1, 1], scope='fuser_combine')
@@ -154,7 +154,7 @@ class CMAP(object):
                 with slim.arg_scope([slim.conv2d], reuse=tf.AUTO_REUSE):
                     rewards_map = _fuse_belief(tf.concat([inputs, state], axis=3))
                     actions_map = slim.conv2d(rewards_map, num_actions, [3, 3],
-                                              weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                              weights_initializer=tf.truncated_normal_initializer(stddev=0.016),
                                               scope='VIN_actions_initial')
                     values_map = tf.reduce_max(actions_map, axis=3, keep_dims=True)
 
@@ -162,7 +162,7 @@ class CMAP(object):
                     for i in xrange(num_iterations - 1):
                         rv = tf.concat([rewards_map, values_map], axis=3)
                         actions_map = slim.conv2d(rv, num_actions, [3, 3],
-                                                  weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
+                                                  weights_initializer=tf.truncated_normal_initializer(stddev=0.016),
                                                   scope='VIN_actions')
                         values_map = tf.reduce_max(actions_map, axis=3, keep_dims=True)
 
@@ -178,7 +178,7 @@ class CMAP(object):
 
         values_features = slim.flatten(final_values_map)
         actions_logit = slim.fully_connected(values_features, num_actions ** 2,
-                                             weights_initializer=tf.truncated_normal_initializer(stddev=0.009),
+                                             weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
                                              activation_fn=tf.nn.relu,
                                              scope='logit_output_1')
         actions_logit = slim.fully_connected(actions_logit, num_actions,
