@@ -225,8 +225,8 @@ def main(_):
                                                gradient_names=gradient_names,
                                                gradient_summary_op=gradient_summary_op),
                         number_of_steps=FLAGS.num_games,
-                        save_interval_secs=300,
-                        save_summaries_secs=300)
+                        save_interval_secs=300 if not FLAGS.debug else 60,
+                        save_summaries_secs=300 if not FLAGS.debug else 60)
 
 
 if __name__ == '__main__':
