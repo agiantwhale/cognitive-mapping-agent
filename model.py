@@ -196,7 +196,7 @@ class CMAP(object):
                                                                 initial_state=vin_cell.zero_state(batch_size,
                                                                                                   tf.float32),
                                                                 swap_memory=True)
-        m['values_maps'] = interm_values_map
+        m['value_map'] = interm_values_map
 
         values_features = slim.flatten(final_values_map)
         actions_logit = slim.fully_connected(values_features, num_actions ** 2,
