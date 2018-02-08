@@ -32,7 +32,7 @@ class CMAP(object):
 
             with slim.arg_scope([slim.conv2d, slim.fully_connected, slim.conv2d_transpose],
                                 activation_fn=tf.nn.relu,
-                                weights_initializer=tf.truncated_normal_initializer(stddev=0.0003),
+                                weights_initializer=tf.truncated_normal_initializer(stddev=0.01),
                                 reuse=tf.AUTO_REUSE):
                 with slim.arg_scope([slim.conv2d, slim.conv2d_transpose],
                                     stride=1, padding='SAME', reuse=tf.AUTO_REUSE):
