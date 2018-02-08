@@ -19,7 +19,7 @@ flags.DEFINE_boolean('random_spawn', True, 'Allow random spawn')
 flags.DEFINE_integer('max_steps_per_episode', 10 ** 100, 'Max steps per episode')
 flags.DEFINE_integer('num_games', 10 ** 8, 'Number of games to play')
 flags.DEFINE_integer('batch_size', 1, 'Number of environments to run')
-flags.DEFINE_float('learning_rate', 0.01, 'ADAM learning rate')
+flags.DEFINE_float('learning_rate', 0.001, 'ADAM learning rate')
 flags.DEFINE_float('decay', 0.999, 'DAGGER decay')
 FLAGS = flags.FLAGS
 
