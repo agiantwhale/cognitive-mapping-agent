@@ -19,6 +19,7 @@ flags.DEFINE_boolean('random_spawn', True, 'Allow random spawn')
 flags.DEFINE_integer('max_steps_per_episode', 10 ** 100, 'Max steps per episode')
 flags.DEFINE_integer('num_games', 10 ** 8, 'Number of games to play')
 flags.DEFINE_integer('batch_size', 1, 'Number of environments to run')
+flags.DEFINE_float('learning_rate', 1., 'ADAM learning rate')
 flags.DEFINE_float('decay', 0.999, 'DAGGER decay')
 FLAGS = flags.FLAGS
 
@@ -206,7 +207,7 @@ def main(_):
     global_step = slim.get_or_create_global_step()
     update_global_step_op = tf.assign_add(global_step, 1)
 
-    optimizer = tf.train.AdamOptimizer(learning_rate=1.)
+    optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
     train_op = slim.learning.create_train_op(net.output_tensors['loss'], optimizer,
                                              global_step=global_step)
     gradients = optimizer.compute_gradients(net.output_tensors['loss'])
