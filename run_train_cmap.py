@@ -59,9 +59,9 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
                                  tf.Summary.Value(tag='losses/reward', simple_value=sum(rewards_history))])
 
     def _build_walltime_summary(begin, data, end):
-        return tf.Summary(value=[tf.Summary.Value(tag='debug/DAGGER_eval_walltime', simple_value=(data - begin)),
-                                 tf.Summary.Value(tag='debug/DAGGER_train_walltime', simple_value=(end - data)),
-                                 tf.Summary.Value(tag='debug/DAGGER_complete_walltime', simple_value=(end - begin))])
+        return tf.Summary(value=[tf.Summary.Value(tag='time/DAGGER_eval_walltime', simple_value=(data - begin)),
+                                 tf.Summary.Value(tag='time/DAGGER_train_walltime', simple_value=(end - data)),
+                                 tf.Summary.Value(tag='time/DAGGER_complete_walltime', simple_value=(end - begin))])
 
     train_step_start = time.time()
 
