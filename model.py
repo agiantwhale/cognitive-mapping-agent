@@ -177,7 +177,13 @@ class CMAP(object):
         m['values_maps'] = interm_values_map
 
         values_features = slim.flatten(final_values_map)
-        actions_logit = slim.fully_connected(values_features, num_actions)
+        actions_logit = slim.fully_connected(values_features, num_actions ** 2,
+                                             weights_initializer=tf.truncated_normal_initializer(stddev=0.009),
+                                             activation_fn=tf.nn.relu,
+                                             scope='logit_output_1')
+        actions_logit = slim.fully_connected(actions_logit, num_actions,
+                                             weights_initializer=tf.truncated_normal_initializer(stddev=0.5),
+                                             scope='logit_output_2')
 
         return actions_logit
 
