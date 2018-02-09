@@ -11,6 +11,7 @@ def main():
     write_to_file('1', [1])
     write_to_file('10', range(1, 11))
     write_to_file('100', range(1, 101))
+    write_to_file('500', range(1, 501))
     write_to_file('1000', range(1, 1001))
 
 
