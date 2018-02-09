@@ -19,7 +19,7 @@ flags.DEFINE_boolean('random_spawn', True, 'Allow random spawn')
 flags.DEFINE_integer('max_steps_per_episode', 10 ** 100, 'Max steps per episode')
 flags.DEFINE_integer('num_games', 10 ** 8, 'Number of games to play')
 flags.DEFINE_integer('batch_size', 1, 'Number of environments to run')
-flags.DEFINE_float('learning_rate', 0.001, 'ADAM learning rate')
+flags.DEFINE_float('learning_rate', 0.0001, 'ADAM learning rate')
 flags.DEFINE_float('decay', 0.995, 'DAGGER decay')
 FLAGS = flags.FLAGS
 
@@ -38,20 +38,23 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
     value_maps = train_step_kwargs['value_maps']
 
     def _build_map_summary(estimate_maps, value_maps):
+        def _to_image(img):
+            return (np.expand_dims(np.squeeze(img), axis=2) * 255).astype(np.uint8)
+
         est_maps = [tf.Summary.Value(tag='losses/free_space_estimates_{}'.format(scale),
                                      image=tf.Summary.Image(
                                          encoded_image_string=cv2.imencode('.png', image)[1].tostring(),
                                          height=image.shape[0],
                                          width=image.shape[1]))
                     for scale, map in enumerate(estimate_maps[-1])
-                    for image in (np.expand_dims(np.squeeze(map), axis=2),)]
+                    for image in (_to_image(map),)]
         val_maps = [tf.Summary.Value(tag='losses/values_{}'.format(scale),
                                      image=tf.Summary.Image(
                                          encoded_image_string=cv2.imencode('.png', image)[1].tostring(),
                                          height=image.shape[0],
                                          width=image.shape[1]))
                     for scale, map in enumerate(value_maps[-1])
-                    for image in (np.expand_dims(np.squeeze(map), axis=2),)]
+                    for image in (_to_image(map),)]
 
         return tf.Summary(value=est_maps + val_maps)
 
@@ -223,9 +226,8 @@ def prepare_feed_dict(tensors, data):
 def main(_):
     def _readout(target):
         max_axis = tf.reduce_max(target, [0, 1], keep_dims=True)
-        target_exp = tf.exp(target - max_axis)
-        normalize = tf.reduce_sum(target_exp, [0, 1], keep_dims=True)
-        image = target_exp / normalize
+        min_axis = tf.reduce_min(target, [0, 1], keep_dims=True)
+        image = (target - min_axis) / (max_axis - min_axis)
         return image
 
     tf.reset_default_graph()
