@@ -14,4 +14,5 @@ python run_train_cmap.py \
 	--logdir=/z/home/iljae/cognitive-mapping-agent/output/config_1 \
 	--random_goal=False \
 	--random_spawn=False \
+	--batch_size=4 \
 	--debug=True
