@@ -80,7 +80,7 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
                                                                          height=image.shape[0],
                                                                          width=image.shape[1])),
                                  tf.Summary.Value(tag='losses/supervision_rate', simple_value=rate),
-                                 tf.Summary.Value(tag='losses/loss', simple_value=loss),
+                                 tf.Summary.Value(tag='losses/average_loss_per_step', simple_value=loss),
                                  tf.Summary.Value(tag='losses/reward', simple_value=sum(rewards_history))])
 
     def _build_walltime_summary(begin, data, end):
@@ -178,6 +178,8 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
         results = sess.run(train_ops, feed_dict=feed_dict)
         cumulative_loss += results[0]
         gradient_collections.append(results[2:])
+
+    cumulative_loss /= len(optimal_action_history)
 
     train_step_end = time.time()
 
