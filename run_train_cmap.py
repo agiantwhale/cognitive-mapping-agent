@@ -89,7 +89,7 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
                                  tf.Summary.Value(tag='time/DAGGER_complete_walltime', simple_value=(end - begin))])
 
     def _build_gradient_summary(gradient_names, gradient_collections):
-        gradient_means = np.array(gradient_collections).mean(axis=1).tolist()
+        gradient_means = np.array(gradient_collections).mean(axis=0).tolist()
         return tf.Summary(value=[tf.Summary.Value(tag='gradient/{}'.format(var), simple_value=val)
                                  for var, val in zip(gradient_names, gradient_means)])
 
