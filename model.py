@@ -84,7 +84,7 @@ class CMAP(object):
             transform = tf.stack([cos_rot, sin_rot, tf.multiply(tf.negative(translation), scale),
                                   tf.negative(sin_rot), cos_rot, zero,
                                   zero, zero], axis=1)
-            return tf.contrib.image.transform(tensor, transform, interpolation='BILINEAR')
+            return tf.contrib.image.transform(tensor, transform)
 
         def _delta_reward_map(reward):
             h, w, c = estimate_shape
