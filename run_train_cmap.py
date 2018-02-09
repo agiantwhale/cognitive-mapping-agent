@@ -251,7 +251,7 @@ def main(_):
     global_step = slim.get_or_create_global_step()
     update_global_step_op = tf.assign_add(global_step, 1)
 
-    optimizer = tf.train.RMSPropOptimizer(learning_rate=FLAGS.learning_rate)
+    optimizer = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)
     gradients = optimizer.compute_gradients(net.output_tensors['loss'])
     gradient_names = [v.name for _, v in gradients]
     gradient_summary_op = [tf.reduce_mean(tf.abs(g)) for g, _ in gradients]
