@@ -151,11 +151,10 @@ class CMAP(object):
         def _fuse_belief(belief):
             with slim.arg_scope([slim.conv2d],
                                 activation_fn=tf.nn.elu,
-                                weights_initializer=tf.truncated_normal_initializer(stddev=0.63),
+                                weights_initializer=tf.truncated_normal_initializer(stddev=1),
                                 biases_initializer=tf.constant_initializer(0),
                                 stride=1, padding='SAME', reuse=tf.AUTO_REUSE):
-                net = slim.repeat(belief, 3, slim.conv2d, 6, [1, 1], scope='fuser')
-                net = slim.conv2d(net, 1, [1, 1], scope='fuser_combine')
+                net = slim.conv2d(belief, 1, [1, 1], scope='fuser_combine')
                 return net
 
         class HierarchicalVINCell(tf.nn.rnn_cell.RNNCell):
@@ -171,8 +170,10 @@ class CMAP(object):
                 # Upscale previous value map
                 state = image_scaler(state)
 
+                estimate, _, values = [tf.expand_dims(layer, axis=3)
+                                       for layer in tf.unstack(inputs, axis=3)]
                 with slim.arg_scope([slim.conv2d], reuse=tf.AUTO_REUSE):
-                    rewards_map = _fuse_belief(tf.concat([inputs, state], axis=3))
+                    rewards_map = _fuse_belief(tf.concat([estimate, values, state], axis=3))
                     actions_map = slim.conv2d(rewards_map, num_actions, [3, 3],
                                               weights_initializer=tf.truncated_normal_initializer(stddev=0.42),
                                               biases_initializer=tf.constant_initializer(0),
