@@ -69,10 +69,20 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
             x, y = pose[:2]
             return 14 + int(x), 14 + image.shape[1] - int(y)
 
+        cv2.putText(image, exp._env_name, (0, 12), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0))
+
+        for row, col in exp._walls:
+            loc = np.array([col, row])
+            points = [loc, loc + np.array([0, 1]),
+                      loc + np.array([1, 1]), loc + np.array([1, 0])]
+            points = np.array([pts * 100 + np.array([14, 14]) for pts in points])
+            cv2.fillConvexPoly(image, points, (224, 172, 52))
+
         for info in info_history:
-            cv2.circle(image, _node_to_game_coordinate(info['GOAL.LOC']), 10, (255, 0, 0), -1)
-            cv2.circle(image, _node_to_game_coordinate(info['SPAWN.LOC']), 10, (0, 255, 0), -1)
-            cv2.circle(image, _pose_to_game_coordinate(info['POSE']), 4, (0, 0, 255), -1)
+            cv2.circle(image, _node_to_game_coordinate(info['GOAL.LOC']), 10, (82, 82, 255), -1)
+            cv2.circle(image, _node_to_game_coordinate(info['SPAWN.LOC']), 10, (211, 111, 112), -1)
+            cv2.circle(image, _pose_to_game_coordinate(info['POSE']), 4, (63, 121, 255), -1)
+
         encoded = cv2.imencode('.png', image)[1].tostring()
 
         return tf.Summary(value=[tf.Summary.Value(tag='losses/trajectory',
@@ -106,7 +116,7 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
     observation_history = [obs]
     egomotion_history = [[0., 0.]]
     rewards_history = [0.]
-    estimate_maps_history = [[np.zeros((1, 64, 64, 3))] * 2]
+    estimate_maps_history = [[np.zeros((1, 64, 64, 3))] * 3]
     info_history = [info]
 
     estimate_maps_images = []
@@ -185,14 +195,13 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
 
     summary_text = ','.join('{}[{}]-{}={}'.format(key, idx, step, value)
                             for step, info in enumerate(info_history)
-                            for key in ('GOAL.LOC', 'SPAWN.LOC', 'POSE')
+                            for key in ('GOAL.LOC', 'SPAWN.LOC', 'POSE', 'env_name')
                             for idx, value in enumerate(info[key]))
     step_history_summary, new_global_step = sess.run([step_history_op, update_global_step_op],
                                                      feed_dict={step_history: summary_text})
     summary_writer.add_summary(step_history_summary, global_step=np_global_step)
 
     summary_writer.add_summary(_build_map_summary(estimate_maps_images, value_maps_images),
-
                                global_step=np_global_step)
     summary_writer.add_summary(_build_gradient_summary(gradient_names, gradient_collections),
                                global_step=np_global_step)
