@@ -79,12 +79,12 @@ class CMAP(object):
             cos_rot = tf.cos(rotation)
             sin_rot = tf.sin(rotation)
             zero = tf.zeros_like(rotation)
-            scale = tf.constant(2 ** scale_index, dtype=tf.float32)
+            scale = tf.constant((2 ** scale_index) / (300. / self._estimate_size), dtype=tf.float32)
 
             transform = tf.stack([cos_rot, sin_rot, tf.multiply(tf.negative(translation), scale),
                                   tf.negative(sin_rot), cos_rot, zero,
                                   zero, zero], axis=1)
-            return tf.contrib.image.transform(tensor, transform)
+            return tf.contrib.image.transform(tensor, transform, interpolation='BILINEAR')
 
         def _delta_reward_map(reward):
             h, w, c = estimate_shape
@@ -212,7 +212,7 @@ class CMAP(object):
 
         return actions_logit
 
-    def __init__(self, image_size=(84, 84), estimate_size=64, estimate_scale=2,
+    def __init__(self, image_size=(84, 84), estimate_size=64, estimate_scale=3,
                  estimator=None, num_actions=4, num_iterations=12, debug=False):
         self._debug = debug
         self._image_size = image_size
