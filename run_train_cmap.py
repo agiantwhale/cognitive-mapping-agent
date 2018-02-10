@@ -116,7 +116,7 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
     observation_history = [obs]
     egomotion_history = [[0., 0.]]
     rewards_history = [0.]
-    estimate_maps_history = [[np.zeros((1, 64, 64, 3))] * 3]
+    estimate_maps_history = [[np.zeros((1, 64, 64, 3))] * net._estimate_scale]
     info_history = [info]
 
     estimate_maps_images = []
@@ -173,7 +173,7 @@ def DAGGER_train_step(sess, train_op, global_step, train_step_kwargs):
         concat_egomotion_history = [egomotion_history[:batch_end_index]] * batch_size
         concat_reward_history = [rewards_history[:batch_end_index]] * batch_size
         concat_optimal_action_history = optimal_action_history[i:batch_end_index]
-        concat_estimate_map_list = [np.zeros((batch_size, 64, 64, 3))] * 2
+        concat_estimate_map_list = [np.zeros((batch_size, 64, 64, 3))] * net._estimate_scale
 
         feed_dict = prepare_feed_dict(net.input_tensors, {'sequence_length': np.arange(i, batch_end_index) + 1,
                                                           'visual_input': np.array(concat_observation_history),
