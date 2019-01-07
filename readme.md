@@ -2,6 +2,9 @@
 
 An implementation of [Cognitive Mapping and Planning for Visual Navigation (S. Gupta *et al*, CVPR 2017)](https://arxiv.org/pdf/1702.03920.pdf) neural network architecture.
 
+## DEPRECATED. The author of the package has given up on reinforcement learning research 🤯
+**Be warned. *I did not succeed in replicating results in a continuous environment (such as DeepMind Lab).*** Regardless, if you would like to take a stab at this model, the `multiprocdmlab` package is available [here](https://github.com/umrobotslang/lab/tree/b118e72f2b3c413b105ba9a34a3883b0936a9ac8).
+
 ## Description
 
 The paper introduced an interesting architecture where an explicit planning module using [Value Iteration Networks](https://arxiv.org/pdf/1602.02867.pdf) are used. The network consists of two major modules:
